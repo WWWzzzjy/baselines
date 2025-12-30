@@ -562,10 +562,22 @@ class AFL(FL):
                 "role": "assistant",
                 "content": content
             })
+
             def filter_function_call(content):
-                return content.replace("```python", "").replace("`", "").replace("'", "").replace('"', '')
+                if "```python" in content:
+                    code_blocks = re.findall(r'```python\s*\n?(.*?)```', content, re.DOTALL)
+
+                    if code_blocks:
+                        last_block = code_blocks[-1].strip()
+                        return last_block.replace("```python", "").replace("`", "").replace("'", "").replace('"', '')
+
+                return ""
+
             try:
                 function_call = filter_function_call(content)
+                if function_call == "":
+                    raise ValueError("Function call cannot be empty")
+                print(f"Function call: {function_call}")
                 function_name = function_call[:function_call.find('(')].strip()
                 arguments = function_call[function_call.find('(') + 1:function_call.rfind(')')].strip()
                 args = [arg.strip() for arg in re.split(r",\s*(?![^()]*\))", arguments)]

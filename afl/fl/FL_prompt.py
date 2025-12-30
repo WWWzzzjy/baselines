@@ -263,6 +263,10 @@ After make the final decision, please check wether the function name is correct 
 call_function_prompt = """
 Now call a function in this format 'FunctionName(Argument)' in a single line without any other word or signal (such as ```).
 Don't call the same function you've previous called, because this may waste your context length.
+Wrap your function call in a python code block like this:
+```python
+FunctionName(Argument)
+```
 """
 
 format_correct_prompt = """
