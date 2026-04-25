@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="description"
+        content="SWERank">
+  <meta name="keywords" content="LLM, Multimodal, Vector Graphics">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>We introduce SWERank, a retrieve-and-rerank framework for software issue localization, which aims to identify the relevant code that needs to be modified to fix a software issue.</title>
+
+  <link href="https://fonts.googleapis.com/css?family=Google+Sans|Noto+Sans|Castoro"
+        rel="stylesheet">
+
+  <link rel="stylesheet" href="./static/css/bulma.min.css">
+  <link rel="stylesheet" href="./static/css/bulma-carousel.min.css">
+  <link rel="stylesheet" href="./static/css/bulma-slider.min.css">
+  <link rel="stylesheet" href="./static/css/fontawesome.all.min.css">
+  <link rel="stylesheet"
+        href="https://cdn.jsdelivr.net/gh/jpswalsh/academicons@1/css/academicons.min.css">
+  <link rel="stylesheet" href="./static/css/index.css">
+  <link rel="icon" href="./static/images/favicon.svg">
+
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+  <script defer src="./static/js/fontawesome.all.min.js"></script>
+  <script src="./static/js/bulma-carousel.min.js"></script>
+  <script src="./static/js/bulma-slider.min.js"></script>
+  <script src="./static/js/index.js"></script>
+
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      var toggles = document.querySelectorAll('.toggle-section');
+      toggles.forEach(function(toggle) {
+        toggle.addEventListener('click', function() {
+          var content = document.getElementById(toggle.getAttribute('aria-controls'));
+          content.classList.toggle('is-active');
+          toggle.children[1].classList.toggle('fa-angle-down');
+          toggle.children[1].classList.toggle('fa-angle-up');
+        });
+      });
+    });
+  </script>
+
+  <style>
+    .collapse-content {
+      display: none;
+      margin-top: 10px;
+    }
+    .collapse-content.is-active {
+      display: block;
+    }
+    .toggle-section .icon.is-small {
+      transition: transform 0.3s ease;
+    }
+    .toggle-section .fa-angle-up {
+      transform: rotate(180deg);
+    }
+  </style>
+
+</head>
+<body>
+
+<section class="hero">
+  <div class="hero-body">
+    <div class="container is-max-desktop">
+      <div class="columns is-centered">
+        <div class="column has-text-centered">
+          <h1 class="title is-1 publication-title">
+            <!-- <img src="static/images/favicon_vdlm.png" alt="Icon" style="vertical-align: middle; height: 50px; margin-right: 10px; margin-bottom: 9px"> -->
+            SWERank: Software Issue Localization <br> with Code Ranking</h1>
+          <div class="is-size-5 publication-authors">
+            <span class="author-block">
+              <a href="https://gangiswag.github.io", target="_blank">Revanth Gangi Reddy</a>*<sup>1,2</sup>,</span>
+            <span class="author-block">
+              <a href="https://tarsur909.github.io/", target="_blank">Tarun Suresh</a>*<sup>1</sup>,</span>
+            <span class="author-block">
+              <a href="https://www.linkedin.com/in/jaehyeok-doo-5768a5231/", target="_blank"> JaeHyeok Doo</a>*<sup>3</sup>,</span>
+            <span class="author-block">
+              <a href="https://www.salesforce.com/blog/author/ye-liu/", target="_blank"> Ye Liu</a><sup>2</sup>,</span>
+            <span class="author-block">
+              <a href="https://nxphi47.github.io", target="_blank"> Xuan Phi Nguyen</a><sup>2</sup>,</span><br>
+            <span class="author-block">
+              <a href="https://www.salesforce.com/blog/author/yingbo-zhou/", target="_blank"> Yingbo Zhou</a><sup>2</sup>,</span>
+            <span class="author-block">
+              <a href="https://www.salesforce.com/blog/author/semih-yavuz/", target="_blank"> Semih Yavuz</a><sup>2</sup>,</span>
+            <span class="author-block">
+              <a href="http://cmxiong.com", target="_blank"> Caiming Xiong</a><sup>2</sup>,</span>
+            <span class="author-block">
+              <a href="https://blender.cs.illinois.edu/hengji.html", target="_blank">Heng Ji</a><sup>1</sup>,
+            </span>
+            <span class="author-block">
+              <a href="https://raihanjoty.github.io", target="_blank">Shafiq Joty</a><sup>2</sup>
+            </span>
+          </div>
+
+          <div class="is-size-5 publication-authors">
+            <sup>1 </sup><span class="author-block"> University of Illinois Urbana-Champaign,</span><sup>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;2 </sup><span class="author-block">Salesforce Research,</span></span><sup>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;3 </sup><span class="author-block">KAIST AI</span>
+          </div>
+          <div class="column has-text-centered">
+            <div class="publication-links">
+              <!-- PDF Link. -->
+              <!-- <span class="link-block">
+                <a href=""
+                   class="external-link button is-normal is-rounded is-dark">
+                  <span class="icon">
+                      <i class="fas fa-file-pdf"></i>
+                  </span>
+                  <span>Paper</span>
+                </a>
+              </span> -->
+              <span class="link-block">
+                <a href="https://arxiv.org/abs/2505.07849"
+                   class="external-link button is-normal is-rounded is-dark">
+                  <span class="icon">
+                      <i class="ai ai-arxiv"></i>
+                  </span>
+                  <span>Paper</span>
+                </a>
+              </span>
+              <!-- Code Link. -->
+              <span class="link-block">
+                <a href="https://github.com/SalesforceAIResearch/SweRank" target="_blank" class="external-link button is-normal is-rounded is-dark">
+                  <span class="icon">
+                      <i class="fab fa-github"></i>
+                  </span>
+                  <span>Code</span>
+                </a>
+              </span>
+              <!-- Model Link. -->
+              <span class="link-block">
+                <a href="https://huggingface.co/collections/Salesforce/swerank-6859a38d541e7801e6406554"
+                   class="external-link button is-normal is-rounded is-dark">
+                  <span class="icon">
+                      <p style="font-size:18px">🤗</p>
+                  </span>
+                  <span>Models</span>
+                </a>
+                <span class="link-block">
+                  <a href=""
+                  class="external-link button is-normal is-rounded is-dark">
+                  <span class="icon">
+                    <p style="font-size:18px">🤗</p>
+                  </span>
+                  <span>Dataset coming soon!</span>
+                </a>
+              <!-- Demo link. -->
+              <span class="link-block">
+                <a href="https://notebooklm.google.com/notebook/56174af5-16ea-4862-b9a4-e78a89783feb/audio" target="_blank"
+                   class="external-link button is-normal is-rounded is-dark">
+                  <span class="icon">
+                    <p style="font-size:18px">&#127911;</p>
+                  </span>
+                  <span>NotebookLM Audio</span>
+                </a>
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Teaser Video -->
+<!-- <section class="hero teaser">
+  <div class="container is-max-desktop">
+    <div class="hero-body">
+      <video id="teaser" autoplay muted controls playsinline loop height="100%">
+        <source src="./static/videos/vdlm_teaser_vid.mp4"
+                type="video/mp4">
+      </video>
+    </div>
+  </div>
+</section> -->
+
+
+<!-- Abstract -->
+<section class="section">
+  <div class="container is-max-desktop">
+    <!-- Abstract. -->
+    <div class="columns is-centered has-text-centered">
+      <div class="column is-four-fifths">
+        <h2 class="title is-3">Abstract</h2>
+        <div class="content has-text-justified">
+          <p>
+            <b>Problem:</b> Software issue localization—the task of identifying the exact code locations (files, classes, or functions) that correspond to a natural-language issue description (e.g., bug report or feature request)—is vital for software development. Recent agentic approaches leveraging LLMs have shown promise but incur high costs due to complex multi-step reasoning and reliance on closed-source models. Conversely, traditional code-ranking techniques, which were optimized for small-scale query-to-code or code-to-code retrieval, struggle with the verboseness of issue localization queries.
+            <br>
+            <br>
+            <b>Contribution:</b> We present <i>SWERank</i>, a retrieve-and-rerank framework for software issue localization combining an embedding-based retriever (<i>SWERankEmbed</i>) with an LLM-based reranker (<i>SWERankLLM</i>). To facilitate training, we introduce <i>SWELoc</i>, a large-scale contrastive dataset mined from public GitHub repositories featuring real-world issue descriptions paired with corresponding code modifications.
+            <br>
+            <br>
+            <b>Results:</b> On the SWE-Bench-Lite and LocBench benchmarks, SWERank achieves state-of-the-art performance, surpassing both prior ranking models and costly agent-based systems. Additionally, we demonstrate that training existing retrievers and rerankers with SWELoc data yields significant improvements on issue localization. 
+          </p>
+        </div>
+        <figure>
+          <img src="static/images/pareto.png" alt="SWERank Pareto Front" class="swerank_pareto" style="width: 60%;"/>
+          <figcaption class="has-text-centered">
+            <b>Figure 1:</b> Our SWERank models achieve superior localization accuracy at a significantly lower cost compared to contemporary agent-based methods.
+          </figcaption>
+        </figure>
+        <br>
+        <figure>
+          <img src="static/images/category_wise.png" alt="LocBench Category-Wise Results" class="category_wise" style="width: 75%;"/>
+          <figcaption class="has-text-centered">
+            <b>Figure 2:</b> Despite being primarily trained with bug reports in SWELoc, the SWERank models demonstrate impressive generalizability across other categories in LocBench.
+          </figcaption>
+        </figure>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<section class="section">
+  <div class="container is-max-desktop">
+    <div class="columns is-centered">
+      <div class="column is-full-width">
+        <h2 class="title is-3">SWELoc Curation</h2>
+        
+        <p>          
+          Existing code retrieval datasets are valuable for NL-to-code search, which focuses on functionality matching. However, they are not ideal for training models for software issue localization, as software issues are often detailed failure descriptions rather than concise specifications. To address this, we created SWELoc, a large-scale dataset specifically for localizing code snippets relevant to software issues, derived from real-world GitHub repositories. Our curation process involves identifying relevant pull requests from Python repositories, extracting issue descriptions with code modifications, and applying filtering and negative mining to improve training data quality.
+        </p>
+        <br>
+        <figure class="is-centered has-text-centered">
+          <img src="static/images/SweLoc_curation.png" alt="SWELoc Curation" class="SweLoc_curation" style="width: 85%;"/>
+          <figcaption class="has-text-centered">
+            <b>Figure 3:</b> Overview of SWELoc data construction pipeline, illustrating the three main stages.
+          </figcaption>
+        </figure>
+        <br>
+        <p>
+          <b>Creating Contrastive Data From GitHub Pull Requests:</b> Our dataset, SWELoc, was created by selecting GitHub repositories associated with the top 11,000 PyPI packages, filtering them for quality (at least 80% Python, not in SWE-Bench or LocBench, and deduplicated by source code overlap). We then identified pull requests (PRs) within these repositories that were explicitly linked to resolving a GitHub issue and included modifications to test files. For each qualifying PR, we extracted the issue description and the codebase snapshot at the PR's base commit.
+
+          From these (PR, codebase) pairs, we generated contrastive training data in the form of <i>&lt;query, positive, negatives&gt;</i> tuples. The issue description served as the query, and each modified function in the PR was a positive example, creating multiple training instances per PR. Negative examples consisted of all unmodified functions from the corresponding codebase snapshot, which were further refined using consistency filtering and hard-negative mining to enhance data quality and model training.
+
+        </p>
+        <br>
+        <p>
+          <b>Consistency Filtering and Hard Negatives:</b> The quality of training data, specifically the relevance of positive examples and the difficulty of negative examples, significantly impacts model performance. Issue descriptions can be vague sometimes, making direct use of scraped data for training unreliable. To address this, first, we apply top-K consistency filtering to retain only instances where the positive code snippet is semantically close to the query relative to other code snippets in the repository. Beyond filtering for relevance of positive pairs, incorporating challenging negatives is crucial for enabling the model to distinguish between semantically similar instances. To this end, we employ a hard negative mining strategy to select the top M most similar functions to the query.
+        </p>  
+        <br>
+        <div class="columns">
+          <div class="column is-5">
+            <figure>
+                <img src="static/images/data_query_lengths.png" alt="Query Lengths Distribution" class="data_query_lengths" style="width: 100%;"/>
+              <figcaption class="has-text-centered">
+                <b>Figure 4:</b> The mean query length in SweLoc is 383 tokens underscoring the descriptive nature of issue reports.
+              </figcaption>
+            </figure>
+          </div>
+          <div class="column is-7">
+            <figure>
+              <img src="static/images/patch_dist.png" alt="Patch Distribution" class="patch_distribution" style="width: 95%;"/>
+              <figcaption class="has-text-centered">
+                <b>Figure 5:</b> Distribution of code modifications per issue. While many localizations are concentrated, a significant number span multiple units.
+              </figcaption>
+            </figure>
+          </div>
+        </div>
+      </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container is-max-desktop">
+    <div class="columns is-centered">
+      <div class="column is-full-width">
+        <h2 class="title is-3">SWERank</h2>
+        <div class="content has-text-justified">
+          <p>
+            SWERank adopts a two-stage retrieve-and-rerank approach with two key components: (1) SWERankEmbed, a bi-encoder retrieval model that efficiently narrows down candidate code snippets from large codebases; and (2) SWERankLLM, an instruction-tuned listwise LLM reranker that refines these initial results for improved localization accuracy.
+            </p>
+        </div> 
+        <h3 class="title is-4">SWERankEmbed</h3>   
+        <div class="content has-text-justified"></div>
+        <p>We trained the SWERankEmbed retrievers in two sizes: small and large. Our retrievers utilize a bi-encoder architecture, where weights are shared between the text and code encoders. They are fine-tuned on our SWELoc dataset using a contrastive learning objective based on the InfoNCE loss. SWERankEmbed-small is initialized with <a href="https://huggingface.co/nomic-ai/CodeRankEmbed" target="_blank">CodeRankEmbed</a>, a state-of-the-art 137M parameter code embedding model, while the large variant is initialized with <a href="https://huggingface.co/Alibaba-NLP/gte-Qwen2-7B-instruct" target="_blank">GTE-Qwen2-7B-Instruct</a>, a 7B parameter text embedding model that employs Qwen2-7B-Instruct as its encoder.</p>
+        <br>
+        <h3 class="title is-4">SWERankLLM</h3>   
+        <div class="content has-text-justified"></div>
+        <p>We also trained our rerankers in small and large sizes, using <a href="https://huggingface.co/nomic-ai/CodeRankLLM" target="_blank">CodeRankLLM</a> for the small version and <a href="https://huggingface.co/Qwen/Qwen2.5-32B-Instruct" target="_blank">Qwen-2.5-32B-Instruct</a> for the large version. Our rerankers are based on LLM-based listwise reranking, a technique that has gained prominence due to its ability to score multiple passages simultaneously. The rerankers are initially pre-trained with text listwise reranking data to learn the listwise output format and are subsequently fine-tuned on SWELoc. Given the absence of ranked ordering among negative samples in SWELoc, we fine-tune with a modified objective that maximizes the likelihood of the first generated (i.e. top-ranked) identifier to be the one corresponding to the positive candidate.
+        </p>
+        <br>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container is-max-desktop">
+    <div class="columns is-centered">
+      <div class="column is-full-width">
+        <h2 class="title is-3">Software Issue Localization Performance </h2>
+        <div class="content has-text-justified">
+          <p>
+            <b>Datasets:</b> We utilize <a href="https://www.swebench.com/lite.html" target="_blank">SWE-Bench-Lite</a> and <a href="https://huggingface.co/datasets/czlll/Loc-Bench_V1" target="_blank">LocBench</a> benchmarks for evaluation. Following prior work, we exclude examples from SWE-Bench-Lite where no existing functions were modified by the patch, resulting in 274 retained examples out of the original 300. While SWE-Bench-Lite primarily consists of bug reports and feature requests, LocBench contains 560 examples overall and additionally includes instances related to security and performance issues. 
+          </p>
+          <p>
+            <b>Baselines and Metrics:</b> We primarily compare SWERank against prior agent-based localization methods, including <a href="https://docs.all-hands.dev/" target="_blank">OpenHands</a>, <a href="https://arxiv.org/abs/2405.15793" target="_blank">SWE-Agent</a>, <a href="https://github.com/aorwall/moatless-tools" target="_blank">MoatlessTools</a>, and <a href="https://arxiv.org/abs/2503.09089" target="_blank">LocAgent</a>, the current state-of-the-art localization approach. These methods mainly use closed-source models like GPT-4o and Claude-3.5, though LocAgent also finetunes open-source models. We also compare SweRank with other performant code retrievers and the rerankers, including CodeRankLLM and GPT-4.1. Following prior work, we use <i>Accuracy@k</i>, which deems localization successful if all relevant code locations are correctly identified within the top-k results. We measure localization accuracy at three granularities: file, module (class) and function
+          </p>
+          <p>
+            <b>Results:</b> On both SWE-Bench-Lite and LocBench, SWERank outperforms all evaluated agent-based methods and prior retrievers and rerankers, establishing a new state-of-the-art for localization performance. Furthermore, SWERank is Pareto-optimal and offers significant cost-effectiveness. The SWERankLLM reranker only needs to generate candidate identifiers as output to determine the ranking order, and the SWERankEmbed output embeddings can be pre-computed, resulting in negligible inference cost. In contrast, agent-based localization can incur considerable time and expense due to multi-turn interactions, each requiring the generation of lengthy reasoning steps.
+          </p>
+          <figure>
+            <img src="static/images/swe_bench_lite.png" alt="SWE-Bench-Lite Results" class="swe_bench_lite" style="width: 95%;"/>
+            <figcaption class="has-text-centered">
+              <b>Figure 6:</b> Localization Performance (in %) on SWE-Bench-Lite. The rerankers use SWERankEmbed-large as the retriever. Best retriever numbers are in blue, while best overall numbers (except GPT-4.1) are in bold.
+          </figure>
+          <figure>
+            <img src="static/images/locbench.png" alt="LocBench Results" class="locbench" style="width: 95%;"/>
+            <figcaption class="has-text-centered">
+              <b>Figure 7:</b> Localization Performance (in %) on LocBench. The rerankers use SWERankEmbed-large as the retriever. Best retriever numbers are in blue, while best overall numbers (except GPT-4.1) are in bold.
+            </figcaption>
+          </figure>
+        </div>  
+            
+  </div>
+</section>
+
+<!-- <section class="section" id="BibTeX">
+  <div class="container is-max-desktop content">
+    <h2 class="title">BibTeX</h2>
+    <pre><code>
+    </code></pre>
+  </div>
+</section> -->
+
+
+<footer class="footer">
+  <div class="container">
+  
+  <div class="content has-text-centered">
+    <div class="columns is-centered">
+      <div class="column is-8">
+        <div class="content">
+          <p>
+            This website's template is borrowed from <a
+              href="https://github.com/nerfies/nerfies.github.io">nerfies</a>. We thank the authors for open-sourcing their code.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

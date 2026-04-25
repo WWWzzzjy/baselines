@@ -1,0 +1,14 @@
+beir==2.1.0
+datasets==3.6.0
+faiss_cpu==1.10.0
+fire==0.6.0
+ftfy==6.3.1
+openai==1.78.1
+pandas==2.2.3
+ray==2.43.0
+sentence_transformers==3.4.1
+swebench==3.0.15
+tiktoken==0.7.0
+torch==2.6.0
+tqdm==4.66.4
+transformers==4.51.3
