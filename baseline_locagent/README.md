@@ -21,13 +21,7 @@ pip install -r requirements.txt
 
 ## API Configuration
 
-Default API settings are in:
-
-```bash
-scripts/env/dashscope_verified.sh
-```
-
-You can either edit that file directly, or override values at runtime:
+Default API settings are defined in `scripts/run_verified.sh`. You can edit that file directly, or override values at runtime:
 
 ```bash
 OPENAI_API_KEY=your_key OPENAI_API_BASE=your_base LOCAGENT_MODEL=your_model bash scripts/run_verified.sh
@@ -38,6 +32,9 @@ Default variables used by the script:
 - `OPENAI_API_BASE`
 - `OPENAI_API_KEY`
 - `LOCAGENT_MODEL`
+- `LOCAGENT_TEMPERATURE`
+- `LOCAGENT_TOP_P`
+- `LOCAGENT_MAX_TOKENS`
 
 ## Run
 
@@ -55,6 +52,7 @@ Default behavior:
 - output dir: `results/verified_full_qwen3coder`
 - localization workers: `NUM_PROCESSES=1`
 - sample count per issue: `NUM_SAMPLES=1`
+- max LLM/tool rounds per attempt: `MAX_ITERATIONS=20`
 - git clone timeout: `LOCAGENT_GIT_CLONE_TIMEOUT=600`
 
 Most importantly, the script now defaults to:
@@ -67,12 +65,26 @@ Most importantly, the script now defaults to:
 
 This avoids the unstable path where localization triggers repo cloning and BM25 construction in the middle of agent search.
 
+During prebuild, the script prints progress lines such as `[graph] progress 2/300` and `[bm25] progress 2/300`. During clone, it prints periodic size updates, so a quiet long-running step is easier to distinguish from a stuck process.
+
 ## Useful Overrides
 
 Run only the first 3 verified instances:
 
 ```bash
 EVAL_N_LIMIT=3 bash scripts/run_verified.sh
+```
+
+Run 2 repeated rounds and compute run-level variance:
+
+```bash
+NUM_RUNS=2 bash scripts/run_verified.sh
+```
+
+Limit LLM/tool interaction rounds for faster smoke tests:
+
+```bash
+MAX_ITERATIONS=8 bash scripts/run_verified.sh
 ```
 
 Run a custom instance subset from a file:
@@ -123,6 +135,7 @@ Important files:
 
 - `args.json`: run arguments
 - `localize.log`: localization log
+- `prebuild_times.json`: offline graph and BM25 prebuild time
 - `loc_outputs.jsonl`: per-instance localization outputs
 - `loc_trajs.jsonl`: per-instance trajectory and token/time usage for successful outputs
 - `merged_loc_outputs_mrr.jsonl`: merged localization outputs
@@ -144,6 +157,8 @@ It reports:
 - `files_f1`
 - `#tokens`
 - `time`
+
+`time` includes localization time plus the offline graph/BM25 prebuild time distributed over the evaluated instances. The metrics file also keeps `localize_time` and `prebuild_time` separately.
 
 Current evaluation behavior:
 
@@ -173,4 +188,3 @@ If a run is interrupted and you restart with the same output directory:
 - completed instances already written to `loc_outputs.jsonl` are skipped
 - the currently interrupted instance may rerun
 - merge and evaluation can still be rerun afterward
-

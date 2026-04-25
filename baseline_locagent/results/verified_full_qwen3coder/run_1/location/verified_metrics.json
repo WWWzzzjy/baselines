@@ -1,0 +1,53 @@
+{
+  "per_instance": [
+    {
+      "instance_id": "astropy__astropy-12907",
+      "success": false,
+      "files_acc@5": 0.0,
+      "files_f1": 0.0,
+      "func_acc@3": 1.0,
+      "func_f1": 0.0,
+      "#tokens": 538899,
+      "localize_time": 60.1873,
+      "prebuild_time": 4.8333,
+      "time": 65.0206
+    },
+    {
+      "instance_id": "astropy__astropy-13033",
+      "success": false,
+      "files_acc@5": 0.0,
+      "files_f1": 0.0,
+      "func_acc@3": 1.0,
+      "func_f1": 0.0,
+      "#tokens": 108070,
+      "localize_time": 14.2761,
+      "prebuild_time": 4.8333,
+      "time": 19.1094
+    },
+    {
+      "instance_id": "astropy__astropy-13236",
+      "success": true,
+      "files_acc@5": 1.0,
+      "files_f1": 0.3333,
+      "func_acc@3": 1.0,
+      "func_f1": 0.0,
+      "#tokens": 231281,
+      "localize_time": 29.8213,
+      "prebuild_time": 4.8333,
+      "time": 34.6546
+    }
+  ],
+  "aggregate": {
+    "count": 1,
+    "total_count": 3,
+    "failed_count": 2,
+    "files_acc@5": 1.0,
+    "files_f1": 0.3333,
+    "func_acc@3": 1.0,
+    "func_f1": 0.0,
+    "#tokens": 231281,
+    "localize_time": 29.8213,
+    "prebuild_time": 4.8333,
+    "time": 34.6546
+  }
+}

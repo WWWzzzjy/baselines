@@ -425,6 +425,7 @@ def run_localize(rank, args, bug_queue, log_queue, output_file_lock, traj_file_l
                         'messages': messages,
                         'fake_user_msg': auto_search.FAKE_USER_MSG_FOR_LOC,
                         'temp': DEFAULT_TEMPERATURE,
+                        'max_iteration_num': args.max_iterations,
                         'tools': tools,
                         'use_function_calling': args.use_function_calling,
                     })
@@ -690,6 +691,8 @@ def main():
     
     parser.add_argument("--max_attempt_num", type=int, default=1, 
                         help='Only use in generating training trajectories.')
+    parser.add_argument("--max_iterations", type=int, default=20,
+                        help='Maximum LLM/tool interaction rounds for one localization attempt.')
     parser.add_argument("--num_samples", type=int, default=2)
     parser.add_argument("--num_processes", type=int, default=-1)
     

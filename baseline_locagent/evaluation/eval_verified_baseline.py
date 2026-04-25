@@ -103,6 +103,14 @@ def load_usage_map(traj_file: str):
     return usage_map
 
 
+def load_prebuild_time(prebuild_time_file: str) -> float:
+    if not prebuild_time_file or not os.path.exists(prebuild_time_file):
+        return 0.0
+    with open(prebuild_time_file, 'r', encoding='utf-8') as file:
+        payload = json.load(file)
+    return float(payload.get('total_seconds', 0.0))
+
+
 def summarize(values: list[float]):
     if not values:
         return {'mean': 0.0, 'std': 0.0}
@@ -112,17 +120,32 @@ def summarize(values: list[float]):
     }
 
 
+def summarize_mean(values: list[float]):
+    if not values:
+        return 0.0
+    return round(mean(values), 4)
+
+
+def has_content(value) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, list):
+        return any(has_content(item) for item in value)
+    return bool(value)
+
+
 def has_nonempty_predictions(row: dict) -> bool:
     for key in ('found_files', 'found_modules', 'found_entities', 'raw_output_loc'):
-        value = row.get(key, [])
-        if isinstance(value, list) and value:
-            if any(item for item in value):
-                return True
+        if has_content(row.get(key)):
+            return True
     return False
 
 
-def evaluate_single_run(loc_rows, file_gt, func_gt, usage_map):
+def evaluate_single_run(loc_rows, file_gt, func_gt, usage_map, prebuild_seconds=0.0):
     per_instance = []
+    prebuild_time_per_instance = prebuild_seconds / len(loc_rows) if loc_rows else 0.0
     for row in loc_rows:
         instance_id = row['instance_id']
         file_metrics = calc_metrics(row.get('found_files', []), file_gt.get(instance_id, []), 5)
@@ -133,6 +156,8 @@ def evaluate_single_run(loc_rows, file_gt, func_gt, usage_map):
             {'prompt_tokens': 0, 'completion_tokens': 0, 'total_tokens': 0, 'time': 0.0},
         )
         success = has_nonempty_predictions(row)
+        localize_time = usage['time']
+        total_time = localize_time + prebuild_time_per_instance
         per_instance.append(
             {
                 'instance_id': instance_id,
@@ -142,7 +167,9 @@ def evaluate_single_run(loc_rows, file_gt, func_gt, usage_map):
                 'func_acc@3': round(func_metrics['acc'], 4),
                 'func_f1': round(func_metrics['f1'], 4),
                 '#tokens': usage['total_tokens'],
-                'time': round(usage['time'], 4),
+                'localize_time': round(localize_time, 4),
+                'prebuild_time': round(prebuild_time_per_instance, 4),
+                'time': round(total_time, 4),
             }
         )
 
@@ -151,12 +178,14 @@ def evaluate_single_run(loc_rows, file_gt, func_gt, usage_map):
         'count': len(successful_rows),
         'total_count': len(per_instance),
         'failed_count': len(per_instance) - len(successful_rows),
-        'files_acc@5': summarize([row['files_acc@5'] for row in successful_rows]),
-        'files_f1': summarize([row['files_f1'] for row in successful_rows]),
-        'func_acc@3': summarize([row['func_acc@3'] for row in successful_rows]),
-        'func_f1': summarize([row['func_f1'] for row in successful_rows]),
-        '#tokens': summarize([row['#tokens'] for row in successful_rows]),
-        'time': summarize([row['time'] for row in successful_rows]),
+        'files_acc@5': summarize_mean([row['files_acc@5'] for row in successful_rows]),
+        'files_f1': summarize_mean([row['files_f1'] for row in successful_rows]),
+        'func_acc@3': summarize_mean([row['func_acc@3'] for row in successful_rows]),
+        'func_f1': summarize_mean([row['func_f1'] for row in successful_rows]),
+        '#tokens': summarize_mean([row['#tokens'] for row in successful_rows]),
+        'localize_time': summarize_mean([row['localize_time'] for row in successful_rows]),
+        'prebuild_time': summarize_mean([row['prebuild_time'] for row in successful_rows]),
+        'time': summarize_mean([row['time'] for row in successful_rows]),
     }
     return {'per_instance': per_instance, 'aggregate': aggregate}
 
@@ -164,7 +193,7 @@ def evaluate_single_run(loc_rows, file_gt, func_gt, usage_map):
 def summarize_run_metric(run_payloads, metric_name):
     values = []
     for payload in run_payloads:
-        values.append(payload['aggregate'][metric_name]['mean'])
+        values.append(payload['aggregate'][metric_name])
     return summarize(values)
 
 
@@ -176,6 +205,7 @@ def main():
     parser.add_argument('--split', default='test')
     parser.add_argument('--num_runs', type=int, default=1, help='Number of full-dataset runs.')
     parser.add_argument('--runs_root', default='', help='Root directory containing run_1, run_2, ... subdirectories.')
+    parser.add_argument('--prebuild_time_file', default='', help='JSON file with offline graph/BM25 prebuild time.')
     parser.add_argument('--output_file', default='')
     args = parser.parse_args()
 
@@ -184,7 +214,8 @@ def main():
         selected_ids = {row['instance_id'] for row in loc_rows}
         file_gt, func_gt = build_gt_maps(args.dataset, args.split, selected_ids)
         usage_map = load_usage_map(args.traj_file) if args.traj_file else {}
-        payload = evaluate_single_run(loc_rows, file_gt, func_gt, usage_map)
+        prebuild_seconds = load_prebuild_time(args.prebuild_time_file)
+        payload = evaluate_single_run(loc_rows, file_gt, func_gt, usage_map, prebuild_seconds)
     else:
         if not args.runs_root:
             raise ValueError('--runs_root is required when --num_runs > 1')
@@ -201,29 +232,40 @@ def main():
 
         file_gt, func_gt = build_gt_maps(args.dataset, args.split, selected_ids)
 
+        shared_prebuild_seconds = load_prebuild_time(args.prebuild_time_file)
+        per_run_shared_prebuild = shared_prebuild_seconds / args.num_runs if args.num_runs else 0.0
+
         for run_idx, loc_rows, run_traj_file in run_rows:
             usage_map = load_usage_map(run_traj_file) if run_traj_file else {}
-            run_payload = evaluate_single_run(loc_rows, file_gt, func_gt, usage_map)
+            run_prebuild_file = os.path.join(args.runs_root, f'run_{run_idx}', 'prebuild_times.json')
+            run_prebuild_seconds = load_prebuild_time(run_prebuild_file)
+            if not run_prebuild_seconds:
+                run_prebuild_seconds = per_run_shared_prebuild
+            run_payload = evaluate_single_run(
+                loc_rows, file_gt, func_gt, usage_map, run_prebuild_seconds
+            )
             run_payloads.append(
                 {
                     'run_id': run_idx,
-                    **run_payload,
+                    'aggregate': run_payload['aggregate'],
                 }
             )
 
         aggregate = {
             'num_runs': args.num_runs,
-            'count': summarize([payload['aggregate']['count'] for payload in run_payloads]),
-            'total_count': summarize([payload['aggregate']['total_count'] for payload in run_payloads]),
-            'failed_count': summarize([payload['aggregate']['failed_count'] for payload in run_payloads]),
+            'count': summarize_run_metric(run_payloads, 'count'),
+            'total_count': summarize_run_metric(run_payloads, 'total_count'),
+            'failed_count': summarize_run_metric(run_payloads, 'failed_count'),
             'files_acc@5': summarize_run_metric(run_payloads, 'files_acc@5'),
             'files_f1': summarize_run_metric(run_payloads, 'files_f1'),
             'func_acc@3': summarize_run_metric(run_payloads, 'func_acc@3'),
             'func_f1': summarize_run_metric(run_payloads, 'func_f1'),
             '#tokens': summarize_run_metric(run_payloads, '#tokens'),
+            'localize_time': summarize_run_metric(run_payloads, 'localize_time'),
+            'prebuild_time': summarize_run_metric(run_payloads, 'prebuild_time'),
             'time': summarize_run_metric(run_payloads, 'time'),
         }
-        payload = {'per_run': run_payloads, 'aggregate': aggregate}
+        payload = {'runs': run_payloads, 'aggregate': aggregate}
 
     print(json.dumps(payload, indent=2))
 

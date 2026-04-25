@@ -16,8 +16,19 @@ def list_folders(path):
     return [p.name for p in Path(path).iterdir() if p.is_dir()]
 
 
+def report_progress(stage, counter, lock, total, repo_name, status, elapsed):
+    with lock:
+        done = counter.get() + 1
+        counter.set(done)
+    print(
+        f'[{stage}] progress {done}/{total}: {repo_name} {status} ({elapsed:.1f}s)',
+        flush=True,
+    )
+
+
 def run(rank, repo_queue, repo_path, out_path,
-        download_repo=False, instance_data=None):
+        download_repo=False, instance_data=None, counter=None, lock=None,
+        total=0):
     while True:
         try:
             repo_name = repo_queue.get_nowait()
@@ -25,9 +36,14 @@ def run(rank, repo_queue, repo_path, out_path,
             # Queue is empty
             break
 
+        repo_start_time = time.time()
         output_file = f'{osp.join(out_path, repo_name)}.pkl'
         if osp.exists(output_file):
-            print(f'[{rank}] {repo_name} already processed, skipping.')
+            print(f'[{rank}] {repo_name} already processed, skipping.', flush=True)
+            report_progress(
+                'graph', counter, lock, total, repo_name, 'skipped',
+                time.time() - repo_start_time,
+            )
             continue
 
         if download_repo:
@@ -40,19 +56,31 @@ def run(rank, repo_queue, repo_path, out_path,
                                       repo_base_dir=repo_base_dir, 
                                       dataset=None)
             except subprocess.CalledProcessError as e:
-                print(f'[{rank}] Error checkout commit {repo_name}: {e}')
+                print(f'[{rank}] Error checkout commit {repo_name}: {e}', flush=True)
+                report_progress(
+                    'graph', counter, lock, total, repo_name, 'checkout_error',
+                    time.time() - repo_start_time,
+                )
                 continue
         else:
             repo_dir = osp.join(repo_path, repo_name)
 
-        print(f'[{rank}] Start process {repo_name}')
+        print(f'[{rank}] Start graph process {repo_name}', flush=True)
         try:
             G = build_graph(repo_dir, global_import=True)
             with open(output_file, 'wb') as f:
                 pickle.dump(G, f)
-            print(f'[{rank}] Processed {repo_name}')
+            print(f'[{rank}] Processed {repo_name}', flush=True)
+            report_progress(
+                'graph', counter, lock, total, repo_name, 'ok',
+                time.time() - repo_start_time,
+            )
         except Exception as e:
-            print(f'[{rank}] Error processing {repo_name}: {e}')
+            print(f'[{rank}] Error processing {repo_name}: {e}', flush=True)
+            report_progress(
+                'graph', counter, lock, total, repo_name, 'error',
+                time.time() - repo_start_time,
+            )
 
 
 if __name__ == '__main__':
@@ -105,6 +133,10 @@ if __name__ == '__main__':
     queue = manager.Queue()
     for repo in repo_folders:
         queue.put(repo)
+    progress_counter = manager.Value('i', 0)
+    progress_lock = manager.Lock()
+    total_repos = len(repo_folders)
+    print(f'[graph] Starting graph prebuild for {total_repos} instances with {args.num_processes} processes.', flush=True)
 
     start_time = time.time()
 
@@ -113,9 +145,10 @@ if __name__ == '__main__':
         run,
         nprocs=args.num_processes,
         args=(queue, args.repo_path, args.index_dir,
-              args.download_repo, selected_instance_data),
+              args.download_repo, selected_instance_data,
+              progress_counter, progress_lock, total_repos),
         join=True
     )
 
     end_time = time.time()
-    print(f'Total Execution time = {end_time - start_time:.3f}s')
+    print(f'[graph] Total execution time = {end_time - start_time:.3f}s', flush=True)
