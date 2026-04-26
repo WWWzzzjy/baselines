@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+.DS_Store
+
+.idea/
+
+datasets/
+mirror_cache/
+playground/
+repo_structures/
+results/
+
+*.log
