@@ -7,7 +7,7 @@ export PYTHONPATH="${REPO_DIR}/src:${PYTHONPATH:-}"
 
 export OPENAI_API_BASE="${OPENAI_API_BASE:-https://dashscope.aliyuncs.com/compatible-mode/v1}"
 export OPENAI_API_KEY="${OPENAI_API_KEY:-sk-482fa2a1567041ecafa9c3114bf3811d}"
-export LOCAGENT_MODEL="${LOCAGENT_MODEL:-qwen3-coder-plus}"
+export LOCAGENT_MODEL="${LOCAGENT_MODEL:-qwen2.5-14b-instruct}"
 export RERANK_TAG="${RERANK_TAG:-rerank-small}"
 
 RETRIEVER_MODEL_NAME="${RETRIEVER_MODEL_NAME:-Salesforce/SweRankEmbed-Small}"
@@ -16,8 +16,9 @@ RETRIEVER_BATCH_SIZE="${RETRIEVER_BATCH_SIZE:-16}"
 RETRIEVER_SEQUENCE_LENGTH="${RETRIEVER_SEQUENCE_LENGTH:-1024}"
 
 DATASET_DIR="${1:-${REPO_DIR}/datasets}"
-DATASET_NAME="${2:-swe-bench-verified}"
-NUM_INSTANCES="${3:-1}"
+DATASET_NAME="${2:-swe-bench-lite}"
+# 0～all
+NUM_INSTANCES="${3:-0}"
 NUM_RUNS="${4:-3}"
 OUTPUT_DIR="${5:-${REPO_DIR}/outputs}"
 EVAL_DIR="${6:-${REPO_DIR}/eval_results}"
@@ -43,6 +44,8 @@ mkdir -p "${LOG_DIR}"
 exec > >(tee -a "${LOG_FILE}") 2>&1
 
 echo "Logging to ${LOG_FILE}"
+echo "Dataset dir: ${DATASET_DIR}"
+echo "Dataset name: ${DATASET_NAME}"
 echo "Retriever batch size: ${RETRIEVER_BATCH_SIZE}"
 echo "Retriever sequence length: ${RETRIEVER_SEQUENCE_LENGTH}"
 echo "Num instances: ${NUM_INSTANCES}"
@@ -53,16 +56,34 @@ CURRENT_INSTANCE_COUNT=0
 if [[ -d "${DATASET_DIR}" ]]; then
   CURRENT_INSTANCE_COUNT=$(find "${DATASET_DIR}" -maxdepth 1 -type d -name "${DATASET_NAME}-function_*" | wc -l | tr -d ' ')
 fi
+echo "Found ${CURRENT_INSTANCE_COUNT} local ${DATASET_NAME} ${LEVEL}-level instances in ${DATASET_DIR}."
 
-if [[ ! -d "${DATASET_DIR}" || "${CURRENT_INSTANCE_COUNT}" -lt "${NUM_INSTANCES}" ]]; then
-  echo "Dataset directory ${DATASET_DIR} has ${CURRENT_INSTANCE_COUNT} ${DATASET_NAME} instances. Building up to ${NUM_INSTANCES} first."
+if [[ "${NUM_INSTANCES}" -le 0 ]]; then
+  echo "NUM_INSTANCES=${NUM_INSTANCES}; using all available local ${DATASET_NAME} instances under ${DATASET_DIR}."
+  if [[ "${CURRENT_INSTANCE_COUNT}" -eq 0 ]]; then
+    echo "No local ${DATASET_NAME} instances found. Building the default first instance; this may clone/fetch source repos."
+    python src/build_verified_beir_subset.py \
+      --dataset_dir "${DATASET_DIR}" \
+      --dataset_name "${DATASET_NAME}" \
+      --num_instances 1
+  else
+    echo "Local dataset is available. Skipping dataset build and source repo clone/fetch."
+  fi
+elif [[ ! -d "${DATASET_DIR}" || "${CURRENT_INSTANCE_COUNT}" -lt "${NUM_INSTANCES}" ]]; then
+  echo "Need ${NUM_INSTANCES} ${DATASET_NAME} instances, but found ${CURRENT_INSTANCE_COUNT}. Building up to ${NUM_INSTANCES}; this may clone/fetch source repos."
   python src/build_verified_beir_subset.py \
     --dataset_dir "${DATASET_DIR}" \
+    --dataset_name "${DATASET_NAME}" \
     --num_instances "${NUM_INSTANCES}"
+else
+  echo "Found enough local ${DATASET_NAME} instances (${CURRENT_INSTANCE_COUNT} >= ${NUM_INSTANCES}). Skipping dataset build and source repo clone/fetch."
 fi
 
-RETRIEVER_OUTPUT_FILE="${OUTPUT_DIR}/retriever_eval_summary.json"
-RETRIEVER_RESULTS_FILE="${OUTPUT_DIR}/retriever_results.json"
+RETRIEVER_FILE_TAG="${DATASET_NAME}_${LEVEL}"
+RETRIEVER_OUTPUT_FILE="${OUTPUT_DIR}/retriever_${RETRIEVER_FILE_TAG}_eval_summary.json"
+RETRIEVER_RESULTS_FILE="${OUTPUT_DIR}/retriever_${RETRIEVER_FILE_TAG}_results.json"
+echo "Retriever summary file: ${RETRIEVER_OUTPUT_FILE}"
+echo "Retriever results file: ${RETRIEVER_RESULTS_FILE}"
 
 if [[ "${RUN_RETRIEVER}" == "1" ]]; then
   echo "Running retriever with model: ${RETRIEVER_MODEL_NAME}"

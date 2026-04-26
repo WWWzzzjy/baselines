@@ -39,9 +39,14 @@ cd SweRank
 
 ## 2. 数据
 
-当前流程面向：
+当前默认流程面向：
 
-- `SWE-bench-Verified`
+- `SWE-bench Lite`
+
+也支持显式指定：
+
+- `swe-bench-lite`
+- `swe-bench-verified`
 
 脚本使用的数据目录是：
 
@@ -49,12 +54,17 @@ cd SweRank
 ./datasets
 ```
 
-仓库现在支持在 `datasets/` 不存在或实例数不足时，自动构建最小可跑的 `SWE-bench-Verified` 本地 BEIR 子集。
+仓库现在支持在 `datasets/` 不存在或实例数不足时，自动构建最小可跑的本地 BEIR 子集。
+
+说明：
+
+- 如果本地已有足够的 `datasets/<dataset>-function_*` 目录，脚本会直接使用本地数据，不会重新构建语料。
+- 如果本地数据不存在或数量不足，脚本会自动构建缺失语料；构建语料时需要从 GitHub 获取目标 repo。
 
 当前本地子集目录命名格式如下：
 
 ```bash
-datasets/swe-bench-verified-function_<instance_id>
+datasets/swe-bench-lite-function_<instance_id>
 ```
 
 每个实例目录下包含：
@@ -68,18 +78,18 @@ datasets/swe-bench-verified-function_<instance_id>
 
 主入口脚本：
 
-[script/run_baseline_eval_dashscope.sh](/Users/Zhuanz/Documents/pyproject/swerank/SweRank/script/run_baseline_eval_dashscope.sh)
+[script/run_baseline_eval_dashscope.sh](/Users/Zhuanz/Documents/pyproject/baselines/baseline_swerank/script/run_baseline_eval_dashscope.sh)
 
 最常用命令：
 
 ```bash
-bash script/run_baseline_eval_dashscope.sh ./datasets swe-bench-verified
+bash script/run_baseline_eval_dashscope.sh
 ```
 
 含义：
 
-- `./datasets`：数据目录
-- `swe-bench-verified`：数据集名
+- `./datasets`：默认数据目录
+- `swe-bench-lite`：默认数据集名
 
 ## 4. 默认配置
 
@@ -111,7 +121,13 @@ bash script/run_baseline_eval_dashscope.sh ./datasets swe-bench-verified
 
 ### 其他
 
+- `NUM_INSTANCES=1`
 - `NUM_RUNS=3`
+
+说明：
+
+- `NUM_INSTANCES=0` 表示使用当前数据目录下所有可用 instance
+- `NUM_INSTANCES>0` 表示只取前 N 条可用 instance
 
 ## 5. 日志
 
@@ -174,7 +190,7 @@ tail -f logs/baseline_eval_dashscope.log
 
 主文件：
 
-- `eval_results/dashscope-baseline-SweRankEmbed-Small_swe-bench-verified_baseline_eval.json`
+- `eval_results/dashscope-baseline-SweRankEmbed-Small_swe-bench-lite_baseline_eval.json`
 
 结构：
 
@@ -246,17 +262,17 @@ NUM_RUNS >= 2
 如果只是验证流程是否通，建议先跑：
 
 ```bash
-bash script/run_baseline_eval_dashscope.sh ./datasets swe-bench-verified 1 1
+bash script/run_baseline_eval_dashscope.sh ./datasets swe-bench-lite 1 1
 ```
 
 如果要验证方差逻辑，建议跑：
 
 ```bash
-bash script/run_baseline_eval_dashscope.sh ./datasets swe-bench-verified 3 2
+bash script/run_baseline_eval_dashscope.sh ./datasets swe-bench-lite 3 2
 ```
 
 如果要正式按要求产出方差，建议跑：
 
 ```bash
-bash script/run_baseline_eval_dashscope.sh ./datasets swe-bench-verified 3 3
+bash script/run_baseline_eval_dashscope.sh ./datasets swe-bench-lite 0 3
 ```

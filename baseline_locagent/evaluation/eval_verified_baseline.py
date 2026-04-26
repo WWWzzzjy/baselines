@@ -4,9 +4,24 @@ import os
 from statistics import mean, pstdev
 
 from datasets import load_dataset
+from tqdm import tqdm
 
 from util.benchmark.parse_patch import get_oracle_filenames
 from util.utils import load_jsonl
+
+
+FILE_TOP_K = 5
+FUNC_TOP_K = 5
+PER_INSTANCE_METRICS = [
+    'files_acc@5',
+    'files_f1@5',
+    'func_acc@5',
+    'func_f1@5',
+    '#tokens',
+    'localize_time',
+    'prebuild_time',
+    'time',
+]
 
 
 def normalize_function_predictions(found_entities):
@@ -73,10 +88,10 @@ def build_gt_maps(dataset_name: str, split: str, selected_ids: set[str]):
 
 def calc_metrics(preds: list[str], gts: list[str], k: int):
     clipped_preds = preds[:k]
-    gt_count = min(len(gts), k)
+    gt_count = len(gts)
     hits = sum(1 for item in clipped_preds if item in gts)
-    acc = 1.0 if hits == gt_count else 0.0
-    precision = hits / k if k else 0.0
+    acc = hits / k if k else 0.0
+    precision = acc
     recall = hits / gt_count if gt_count else 0.0
     f1 = 0.0 if precision + recall == 0 else 2 * precision * recall / (precision + recall)
     return {
@@ -146,11 +161,11 @@ def has_nonempty_predictions(row: dict) -> bool:
 def evaluate_single_run(loc_rows, file_gt, func_gt, usage_map, prebuild_seconds=0.0):
     per_instance = []
     prebuild_time_per_instance = prebuild_seconds / len(loc_rows) if loc_rows else 0.0
-    for row in loc_rows:
+    for row in tqdm(loc_rows, desc='Evaluating instances', unit='instance'):
         instance_id = row['instance_id']
-        file_metrics = calc_metrics(row.get('found_files', []), file_gt.get(instance_id, []), 5)
+        file_metrics = calc_metrics(row.get('found_files', []), file_gt.get(instance_id, []), FILE_TOP_K)
         func_preds = normalize_function_predictions(row.get('found_entities', []))
-        func_metrics = calc_metrics(func_preds, func_gt.get(instance_id, []), 3)
+        func_metrics = calc_metrics(func_preds, func_gt.get(instance_id, []), FUNC_TOP_K)
         usage = usage_map.get(
             instance_id,
             {'prompt_tokens': 0, 'completion_tokens': 0, 'total_tokens': 0, 'time': 0.0},
@@ -163,9 +178,9 @@ def evaluate_single_run(loc_rows, file_gt, func_gt, usage_map, prebuild_seconds=
                 'instance_id': instance_id,
                 'success': success,
                 'files_acc@5': round(file_metrics['acc'], 4),
-                'files_f1': round(file_metrics['f1'], 4),
-                'func_acc@3': round(func_metrics['acc'], 4),
-                'func_f1': round(func_metrics['f1'], 4),
+                'files_f1@5': round(file_metrics['f1'], 4),
+                'func_acc@5': round(func_metrics['acc'], 4),
+                'func_f1@5': round(func_metrics['f1'], 4),
                 '#tokens': usage['total_tokens'],
                 'localize_time': round(localize_time, 4),
                 'prebuild_time': round(prebuild_time_per_instance, 4),
@@ -179,9 +194,9 @@ def evaluate_single_run(loc_rows, file_gt, func_gt, usage_map, prebuild_seconds=
         'total_count': len(per_instance),
         'failed_count': len(per_instance) - len(successful_rows),
         'files_acc@5': summarize_mean([row['files_acc@5'] for row in successful_rows]),
-        'files_f1': summarize_mean([row['files_f1'] for row in successful_rows]),
-        'func_acc@3': summarize_mean([row['func_acc@3'] for row in successful_rows]),
-        'func_f1': summarize_mean([row['func_f1'] for row in successful_rows]),
+        'files_f1@5': summarize_mean([row['files_f1@5'] for row in successful_rows]),
+        'func_acc@5': summarize_mean([row['func_acc@5'] for row in successful_rows]),
+        'func_f1@5': summarize_mean([row['func_f1@5'] for row in successful_rows]),
         '#tokens': summarize_mean([row['#tokens'] for row in successful_rows]),
         'localize_time': summarize_mean([row['localize_time'] for row in successful_rows]),
         'prebuild_time': summarize_mean([row['prebuild_time'] for row in successful_rows]),
@@ -195,6 +210,15 @@ def summarize_run_metric(run_payloads, metric_name):
     for payload in run_payloads:
         values.append(payload['aggregate'][metric_name])
     return summarize(values)
+
+
+def summarize_instance_average_metric(per_instance_values, metric_name):
+    instance_averages = []
+    for metric_values in per_instance_values.values():
+        values = metric_values.get(metric_name, [])
+        if values:
+            instance_averages.append(mean(values))
+    return summarize(instance_averages)
 
 
 def main():
@@ -221,9 +245,10 @@ def main():
             raise ValueError('--runs_root is required when --num_runs > 1')
 
         run_payloads = []
+        per_instance_values = {}
         selected_ids = set()
         run_rows = []
-        for run_idx in range(1, args.num_runs + 1):
+        for run_idx in tqdm(range(1, args.num_runs + 1), desc='Loading run outputs', unit='run'):
             run_loc_file = os.path.join(args.runs_root, f'run_{run_idx}', 'location', os.path.basename(args.loc_file))
             run_traj_file = os.path.join(args.runs_root, f'run_{run_idx}', 'location', os.path.basename(args.traj_file)) if args.traj_file else ''
             loc_rows = load_jsonl(run_loc_file)
@@ -235,7 +260,7 @@ def main():
         shared_prebuild_seconds = load_prebuild_time(args.prebuild_time_file)
         per_run_shared_prebuild = shared_prebuild_seconds / args.num_runs if args.num_runs else 0.0
 
-        for run_idx, loc_rows, run_traj_file in run_rows:
+        for run_idx, loc_rows, run_traj_file in tqdm(run_rows, desc='Evaluating runs', unit='run'):
             usage_map = load_usage_map(run_traj_file) if run_traj_file else {}
             run_prebuild_file = os.path.join(args.runs_root, f'run_{run_idx}', 'prebuild_times.json')
             run_prebuild_seconds = load_prebuild_time(run_prebuild_file)
@@ -244,6 +269,10 @@ def main():
             run_payload = evaluate_single_run(
                 loc_rows, file_gt, func_gt, usage_map, run_prebuild_seconds
             )
+            for row in run_payload['per_instance']:
+                metric_values = per_instance_values.setdefault(row['instance_id'], {})
+                for metric_name in PER_INSTANCE_METRICS:
+                    metric_values.setdefault(metric_name, []).append(row[metric_name])
             run_payloads.append(
                 {
                     'run_id': run_idx,
@@ -256,15 +285,11 @@ def main():
             'count': summarize_run_metric(run_payloads, 'count'),
             'total_count': summarize_run_metric(run_payloads, 'total_count'),
             'failed_count': summarize_run_metric(run_payloads, 'failed_count'),
-            'files_acc@5': summarize_run_metric(run_payloads, 'files_acc@5'),
-            'files_f1': summarize_run_metric(run_payloads, 'files_f1'),
-            'func_acc@3': summarize_run_metric(run_payloads, 'func_acc@3'),
-            'func_f1': summarize_run_metric(run_payloads, 'func_f1'),
-            '#tokens': summarize_run_metric(run_payloads, '#tokens'),
-            'localize_time': summarize_run_metric(run_payloads, 'localize_time'),
-            'prebuild_time': summarize_run_metric(run_payloads, 'prebuild_time'),
-            'time': summarize_run_metric(run_payloads, 'time'),
         }
+        for metric_name in PER_INSTANCE_METRICS:
+            aggregate[metric_name] = summarize_instance_average_metric(
+                per_instance_values, metric_name
+            )
         payload = {'runs': run_payloads, 'aggregate': aggregate}
 
     print(json.dumps(payload, indent=2))

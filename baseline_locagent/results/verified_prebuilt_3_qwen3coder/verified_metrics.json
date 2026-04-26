@@ -1,0 +1,83 @@
+{
+  "runs": [
+    {
+      "run_id": 1,
+      "aggregate": {
+        "count": 2,
+        "total_count": 3,
+        "failed_count": 1,
+        "files_acc@5": 0.2,
+        "files_f1@5": 0.3333,
+        "func_acc@5": 0.0,
+        "func_f1@5": 0.0,
+        "#tokens": 87128.5,
+        "localize_time": 21.7997,
+        "prebuild_time": 0.0,
+        "time": 21.7997
+      }
+    },
+    {
+      "run_id": 2,
+      "aggregate": {
+        "count": 2,
+        "total_count": 3,
+        "failed_count": 1,
+        "files_acc@5": 0.2,
+        "files_f1@5": 0.3333,
+        "func_acc@5": 0.0,
+        "func_f1@5": 0.0,
+        "#tokens": 87914.5,
+        "localize_time": 21.3255,
+        "prebuild_time": 0.0,
+        "time": 21.3255
+      }
+    }
+  ],
+  "aggregate": {
+    "num_runs": 2,
+    "count": {
+      "mean": 2,
+      "std": 0.0
+    },
+    "total_count": {
+      "mean": 3,
+      "std": 0.0
+    },
+    "failed_count": {
+      "mean": 1,
+      "std": 0.0
+    },
+    "files_acc@5": {
+      "mean": 0.1333,
+      "std": 0.0943
+    },
+    "files_f1@5": {
+      "mean": 0.2222,
+      "std": 0.1571
+    },
+    "func_acc@5": {
+      "mean": 0.0,
+      "std": 0.0
+    },
+    "func_f1@5": {
+      "mean": 0.0,
+      "std": 0.0
+    },
+    "#tokens": {
+      "mean": 82270.1667,
+      "std": 11432.5901
+    },
+    "localize_time": {
+      "mean": 21.2557,
+      "std": 1.4209
+    },
+    "prebuild_time": {
+      "mean": 0.0,
+      "std": 0.0
+    },
+    "time": {
+      "mean": 21.2557,
+      "std": 1.4209
+    }
+  }
+}

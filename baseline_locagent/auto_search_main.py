@@ -65,6 +65,19 @@ DEFAULT_TOP_P = float(os.environ.get("LOCAGENT_TOP_P", "0.95"))
 DEFAULT_MAX_TOKENS = int(os.environ.get("LOCAGENT_MAX_TOKENS", "32768"))
 
 
+def get_completion_extra_kwargs(model_name: str) -> dict:
+    extra_body = {}
+    enable_thinking = os.environ.get("LOCAGENT_ENABLE_THINKING")
+    if enable_thinking is not None:
+        extra_body["enable_thinking"] = enable_thinking.lower() in {"1", "true", "yes"}
+    elif (
+        "dashscope.aliyuncs.com" in os.environ.get("OPENAI_API_BASE", "")
+        and "qwen3" in model_name.lower()
+    ):
+        extra_body["enable_thinking"] = False
+    return {"extra_body": extra_body} if extra_body else {}
+
+
 def get_mp_context():
     if os.name == 'nt':
         return mp.get_context('spawn')
@@ -182,6 +195,7 @@ def auto_search_process(result_queue,
     finish = False
     while not finish:
         cur_interation_num += 1
+        completion_extra_kwargs = get_completion_extra_kwargs(model_name)
         if cur_interation_num == max_iteration_num:
             messages.append({
                 'role': 'user',
@@ -203,7 +217,8 @@ def auto_search_process(result_queue,
                     max_tokens=DEFAULT_MAX_TOKENS,
                     repetition_penalty=1.05,
                     messages=messages,
-                    stop=NON_FNCALL_STOP_WORDS
+                    stop=NON_FNCALL_STOP_WORDS,
+                    **completion_extra_kwargs,
                 )
             elif tools:
                 response = litellm.completion(
@@ -214,6 +229,7 @@ def auto_search_process(result_queue,
                     top_p=DEFAULT_TOP_P,
                     max_tokens=DEFAULT_MAX_TOKENS,
                     # stop=['</execute_ipython>'], #</finish>',
+                    **completion_extra_kwargs,
                 )
             else:
                 response = litellm.completion(
@@ -223,6 +239,7 @@ def auto_search_process(result_queue,
                     top_p=DEFAULT_TOP_P,
                     max_tokens=DEFAULT_MAX_TOKENS,
                     stop=['</execute_ipython>'], #</finish>',
+                    **completion_extra_kwargs,
                 )
         except litellm.BadRequestError as e:
             # If there's an error, send the error info back to the parent process

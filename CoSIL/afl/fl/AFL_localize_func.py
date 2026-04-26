@@ -44,9 +44,18 @@ def localize_instance(
         print(f"[func-localize] skip existing instance_id={instance_id}", flush=True)
         return
 
-    if PROJECT_FILE_LOC is not None:
+    if PROJECT_FILE_LOC:
         project_file = os.path.join(PROJECT_FILE_LOC, bug["instance_id"] + ".json")
-        d = load_json(project_file)
+        if os.path.exists(project_file):
+            d = load_json(project_file)
+        else:
+            print(
+                f"[func-localize] missing cached structure {project_file}; generating from repo",
+                flush=True,
+            )
+            d = get_project_structure_from_scratch(
+                bug["repo"], bug["base_commit"], bug["instance_id"], "playground"
+            )
     else:
         # we need to get the project structure directly
         d = get_project_structure_from_scratch(

@@ -14,8 +14,18 @@ def normalize_dataset_name(dataset_name: str) -> str:
     aliases = {
         "swe-bench-verified": "swe-bench-verified",
         "swebench-verified": "swe-bench-verified",
+        "swe-bench-lite": "swe-bench-lite",
+        "swebench-lite": "swe-bench-lite",
     }
     return aliases.get(normalized, normalized)
+
+
+def get_hf_dataset_name(dataset_name: str) -> str:
+    if dataset_name == "swe-bench-verified":
+        return "princeton-nlp/SWE-bench_Verified"
+    if dataset_name == "swe-bench-lite":
+        return "princeton-nlp/SWE-bench_Lite"
+    raise ValueError(f"Unsupported dataset_name: {dataset_name}")
 
 
 def changed_functions_from_patch(instance, structure):
@@ -42,7 +52,7 @@ def write_jsonl(rows, output_path):
             handle.write(json.dumps(row, ensure_ascii=False) + "\n")
 
 
-def build_instance_dataset(instance, dataset_root):
+def build_instance_dataset(instance, dataset_root, dataset_name):
     print(f"[build] instance={instance['instance_id']} repo={instance['repo']} commit={instance['base_commit']}", flush=True)
     structure = get_project_structure_from_scratch(
         instance["repo"],
@@ -66,7 +76,7 @@ def build_instance_dataset(instance, dataset_root):
     if not relevant_doc_ids:
         return False, "changed_functions_missing_from_corpus"
 
-    instance_dir = dataset_root / f"swe-bench-verified-function_{instance['instance_id']}"
+    instance_dir = dataset_root / f"{dataset_name}-function_{instance['instance_id']}"
     qrels_dir = instance_dir / "qrels"
     instance_dir.mkdir(parents=True, exist_ok=True)
     qrels_dir.mkdir(parents=True, exist_ok=True)
@@ -103,21 +113,22 @@ def build_instance_dataset(instance, dataset_root):
 
 def main(
     dataset_dir="datasets",
+    dataset_name="swe-bench-verified",
     num_instances=3,
     hf_split="test",
     max_candidates=20,
 ):
-    dataset_name = normalize_dataset_name("swe-bench-verified")
+    dataset_name = normalize_dataset_name(dataset_name)
     dataset_root = Path(dataset_dir)
     dataset_root.mkdir(parents=True, exist_ok=True)
 
-    ds = load_dataset("princeton-nlp/SWE-bench_Verified", split=hf_split)
+    ds = load_dataset(get_hf_dataset_name(dataset_name), split=hf_split)
 
     built = []
     skipped = []
     for instance in ds:
         print(f"[scan] trying instance={instance['instance_id']}", flush=True)
-        success, payload = build_instance_dataset(instance, dataset_root)
+        success, payload = build_instance_dataset(instance, dataset_root, dataset_name)
         if success:
             built.append(payload)
             print(f"[scan] built {len(built)}/{num_instances}: {instance['instance_id']}", flush=True)

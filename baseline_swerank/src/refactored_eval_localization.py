@@ -111,13 +111,8 @@ def recall_at_k(pred_target: Tensor, ideal_target: Tensor, k: Optional[int] = No
 
 def acc_at_k(pred_target: Tensor, ideal_target: Tensor, k: Optional[int] = None) -> Tensor:
     pred_target = pred_target[:, :k] 
-    ideal_target = ideal_target[:, :k]
-    
-    relevant = (pred_target == 1).sum(dim=-1)  
-    total_relevant = (ideal_target == 1).sum(dim=-1) 
-
-    comparison = relevant == total_relevant
-    return comparison.sum()/relevant.shape[0]
+    relevant = (pred_target == 1).sum(dim=-1)
+    return (relevant / k).mean(0)
 
 
 def precision_at_k(pred_target: Tensor, ideal_target: Tensor, k: Optional[int] = None) -> Tensor:

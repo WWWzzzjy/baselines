@@ -1,3 +1,4 @@
+import collections
 import copy
 import json
 import os
@@ -65,6 +66,12 @@ def compute_variance(values):
     return round(statistics.variance(values), 8)
 
 
+def compute_std(values):
+    if len(values) <= 1:
+        return 0.0
+    return round(statistics.stdev(values), 8)
+
+
 def metric_at(result_dict, prefix, k):
     return float(result_dict[f"{prefix}@{k}"])
 
@@ -93,6 +100,22 @@ def collect_history_stats(history_path):
     }
 
 
+def load_retriever_eval_times(retriever_output_dir, selected_ids):
+    results_path = Path(retriever_output_dir)
+    eval_path = results_path.with_name(
+        results_path.stem.replace("_results", "_eval_per_instance") + ".json"
+    )
+    if not eval_path.exists():
+        return {instance_id: 0.0 for instance_id in selected_ids}
+
+    rows = json.loads(eval_path.read_text(encoding="utf-8"))
+    return {
+        instance_id: round(float(rows[index].get("time", 0.0) or 0.0), 4)
+        for index, instance_id in enumerate(selected_ids)
+        if index < len(rows)
+    }
+
+
 def select_instances(retriever_rows, dataset_dir, dataset_name, limit):
     selected = []
     for row in retriever_rows:
@@ -100,12 +123,16 @@ def select_instances(retriever_rows, dataset_dir, dataset_name, limit):
         dataset_path = Path(dataset_dir) / f"{dataset_name}-function_{instance_id}"
         if dataset_path.exists():
             selected.append(row)
-        if len(selected) >= limit:
+        if limit > 0 and len(selected) >= limit:
             break
-    if len(selected) < limit:
+    if limit > 0 and len(selected) < limit:
         raise ValueError(
             f"Only found {len(selected)} valid instances under {dataset_dir} for dataset {dataset_name}, "
             f"but at least {limit} are required."
+        )
+    if limit <= 0 and not selected:
+        raise ValueError(
+            f"No valid instances found under {dataset_dir} for dataset {dataset_name}."
         )
     return selected
 
@@ -131,7 +158,7 @@ def evaluate_subset(dataset_name, split, dataset_dir, reranker_results, selected
         "function",
         dataset_name,
         split,
-        k_values=[3],
+        k_values=[5],
         metrics=["acc", "precision", "recall"],
         selected_list=selected_ids,
         qrels=qrels,
@@ -140,26 +167,36 @@ def evaluate_subset(dataset_name, split, dataset_dir, reranker_results, selected
 
     file_precision = metric_at(file_res, "P", 5)
     file_recall = metric_at(file_res, "Recall", 5)
-    func_precision = metric_at(func_res, "P", 3)
-    func_recall = metric_at(func_res, "Recall", 3)
+    func_precision = metric_at(func_res, "P", 5)
+    func_recall = metric_at(func_res, "Recall", 5)
 
     return {
-        "func_acc_at_3": metric_at(func_res, "Acc", 3),
-        "func_f1_at_3": compute_f1(func_precision, func_recall),
+        "func_acc_at_5": metric_at(func_res, "Acc", 5),
+        "func_f1_at_5": compute_f1(func_precision, func_recall),
         "files_acc_at_5": metric_at(file_res, "Acc", 5),
         "files_f1_at_5": compute_f1(file_precision, file_recall),
-        "func_precision_at_3": func_precision,
-        "func_recall_at_3": func_recall,
+        "func_precision_at_5": func_precision,
+        "func_recall_at_5": func_recall,
         "files_precision_at_5": file_precision,
         "files_recall_at_5": file_recall,
     }
 
 
+REQUESTED_METRIC_KEYS = [
+    ("files_acc@5", "files_acc_at_5"),
+    ("files_f1@5", "files_f1_at_5"),
+    ("func_acc@5", "func_acc_at_5"),
+    ("func_f1@5", "func_f1_at_5"),
+    ("time", "total_time_seconds"),
+    ("tokens", "total_tokens"),
+]
+
+
 def aggregate_runs(run_metrics):
     summary = {}
     for key in [
-        "func_acc_at_3",
-        "func_f1_at_3",
+        "func_acc_at_5",
+        "func_f1_at_5",
         "files_acc_at_5",
         "files_f1_at_5",
         "total_tokens",
@@ -172,7 +209,32 @@ def aggregate_runs(run_metrics):
         summary[key] = {
             "mean": round(sum(values) / len(values), 4),
             "variance": compute_variance(values),
+            "std": compute_std(values),
             "values": values,
+        }
+    return summary
+
+
+def build_requested_summary(run_metrics):
+    instance_metric_values = collections.defaultdict(lambda: collections.defaultdict(list))
+    for run in run_metrics:
+        for instance_row in run.get("instances", []):
+            instance_id = instance_row["instance_id"]
+            for output_key, _source_key in REQUESTED_METRIC_KEYS:
+                instance_metric_values[output_key][instance_id].append(float(instance_row[output_key]))
+
+    summary = {}
+    for output_key, _source_key in REQUESTED_METRIC_KEYS:
+        instance_means = {
+            instance_id: round(sum(values) / len(values), 4)
+            for instance_id, values in instance_metric_values[output_key].items()
+        }
+        values = list(instance_means.values())
+        summary[output_key] = {
+            "mean": round(sum(values) / len(values), 4) if values else 0.0,
+            "std": compute_std(values),
+            "values": values,
+            "instance_means": instance_means,
         }
     return summary
 
@@ -210,6 +272,7 @@ def run_eval(
     retriever_rows = load_jsonl(retriever_output_dir)
     selected_rows = select_instances(retriever_rows, dataset_dir, dataset_name, num_instances)
     selected_ids = [row["instance_id"] for row in selected_rows]
+    retriever_eval_times = load_retriever_eval_times(retriever_output_dir, selected_ids)
 
     subset_dir = Path(output_dir) / "baseline_eval_inputs"
     subset_dir.mkdir(parents=True, exist_ok=True)
@@ -267,6 +330,7 @@ def run_eval(
         rerank_time_seconds = round(time.perf_counter() - rerank_start_time, 4)
 
         reranker_results = {}
+        instance_history_totals = {}
         history_totals = {
             "prompt_tokens": 0,
             "completion_tokens": 0,
@@ -296,6 +360,8 @@ def run_eval(
             get_sorted_documents_func(retrieved_results, reranker_results)
 
             instance_history = collect_history_stats(str(history_path))
+            instance_id = dataset_instance.split("-function_", 1)[-1]
+            instance_history_totals[instance_id] = instance_history
             for key in history_totals:
                 history_totals[key] += instance_history[key]
 
@@ -311,6 +377,52 @@ def run_eval(
             selected_ids=selected_ids,
             retriever_subset_path=retriever_subset_path,
         )
+        instance_metrics = []
+        for instance_id in selected_ids:
+            instance_metric_row = evaluate_subset(
+                dataset_name=dataset_name,
+                split=split,
+                dataset_dir=dataset_dir,
+                reranker_results=reranker_results,
+                selected_ids=[instance_id],
+                retriever_subset_path=retriever_subset_path,
+            )
+            instance_history = instance_history_totals.get(
+                instance_id,
+                {
+                    "prompt_tokens": 0,
+                    "completion_tokens": 0,
+                    "total_tokens": 0,
+                    "rerank_api_latency_seconds": 0.0,
+                },
+            )
+            instance_retriever_time = round(float(retriever_eval_times.get(instance_id, 0.0)), 4)
+            instance_time = round(
+                instance_retriever_time
+                + float(instance_history.get("rerank_api_latency_seconds", 0.0) or 0.0),
+                4,
+            )
+            instance_metric_row.update(
+                {
+                    "instance_id": instance_id,
+                    "run_index": run_idx + 1,
+                    "prompt_tokens": instance_history["prompt_tokens"],
+                    "completion_tokens": instance_history["completion_tokens"],
+                    "total_tokens": int(instance_history["total_tokens"]),
+                    "retriever_time_seconds": instance_retriever_time,
+                    "rerank_api_latency_seconds": round(
+                        float(instance_history["rerank_api_latency_seconds"]), 4
+                    ),
+                    "time": instance_time,
+                    "tokens": int(instance_history["total_tokens"]),
+                    "files_acc@5": instance_metric_row["files_acc_at_5"],
+                    "files_f1@5": instance_metric_row["files_f1_at_5"],
+                    "func_acc@5": instance_metric_row["func_acc_at_5"],
+                    "func_f1@5": instance_metric_row["func_f1_at_5"],
+                }
+            )
+            instance_metrics.append(instance_metric_row)
+
         metric_row.update(
             {
                 "run_index": run_idx + 1,
@@ -323,11 +435,23 @@ def run_eval(
                 "rerank_time_seconds": rerank_time_seconds,
                 "total_time_seconds": total_time_seconds,
                 "rerank_api_latency_seconds": round(history_totals["rerank_api_latency_seconds"], 4),
+                "instances": instance_metrics,
+            }
+        )
+        metric_row.update(
+            {
+                "files_acc@5": metric_row["files_acc_at_5"],
+                "files_f1@5": metric_row["files_f1_at_5"],
+                "func_acc@5": metric_row["func_acc_at_5"],
+                "func_f1@5": metric_row["func_f1_at_5"],
+                "time": metric_row["total_time_seconds"],
+                "tokens": metric_row["total_tokens"],
             }
         )
         run_metrics.append(metric_row)
 
     summary = aggregate_runs(run_metrics)
+    requested_summary = build_requested_summary(run_metrics)
     payload = {
         "config": {
             "retriever_output_dir": retriever_output_dir,
@@ -351,14 +475,16 @@ def run_eval(
         },
         "runs": run_metrics,
         "summary": summary,
+        "requested_summary": requested_summary,
     }
 
     report_path = Path(eval_dir) / f"{sanitize_name(run_tag)}_{sanitize_name(dataset_name)}_baseline_eval.json"
     with open(report_path, "w", encoding="utf-8") as handle:
         json.dump(payload, handle, indent=2, ensure_ascii=False)
 
-    print(json.dumps(payload, indent=2, ensure_ascii=False))
     print(f"\nSaved report to: {report_path}")
+    print("\nRequested metrics summary:")
+    print(json.dumps(requested_summary, indent=2, ensure_ascii=False))
 
 
 if __name__ == "__main__":
