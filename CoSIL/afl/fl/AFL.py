@@ -536,7 +536,10 @@ class AFL(FL):
             temperature=0.0,
             batch_size=1,
         )
+        total_usage = self._empty_usage()
+        total_inference_time = 0.0
         traj = model.codegen(message, num_samples=1)[0]
+        total_inference_time += self._add_traj_cost(total_usage, traj)
         traj["prompt"] = message
         reason = traj["response"]
         current_tokens = traj["usage"]["completion_tokens"] + traj["usage"]["prompt_tokens"]
