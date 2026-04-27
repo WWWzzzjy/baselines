@@ -257,7 +257,7 @@ def auto_search_process(result_queue,
                 function_response = execute_ipython(ipython_code)
                 try:
                     function_response = eval(function_response)
-                except SyntaxError:
+                except Exception:
                     function_response = function_response
                 if not isinstance(function_response, str):
                     function_response = str(function_response)
