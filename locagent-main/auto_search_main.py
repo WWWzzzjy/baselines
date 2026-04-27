@@ -607,15 +607,15 @@ def main():
     parser.add_argument(
         "--model", type=str,
         default="openai/gpt-4o-2024-05-13",
-        choices=["gpt-4o", 
-                 "azure/gpt-4o", "openai/gpt-4o-2024-05-13",
-                 "deepseek/deepseek-chat", "deepseek-ai/DeepSeek-R1",
-                 "litellm_proxy/claude-3-5-sonnet-20241022", "litellm_proxy/gpt-4o-2024-05-13", "litellm_proxy/o3-mini-2025-01-31",
-                 # fine-tuned model
-                 "openai/qwen-7B", "openai/qwen-7B-128k", "openai/ft-qwen-7B", "openai/ft-qwen-7B-128k",
-                 "openai/qwen-32B", "openai/qwen-32B-128k", "openai/ft-qwen-32B", "openai/ft-qwen-32B-128k",
-                 "openai/qwen2.5-14b-instruct","openai/qwen2.5-7b-instruct"
-        ]
+        # choices=["gpt-4o", 
+        #          "azure/gpt-4o", "openai/gpt-4o-2024-05-13",
+        #          "deepseek/deepseek-chat", "deepseek-ai/DeepSeek-R1",
+        #          "litellm_proxy/claude-3-5-sonnet-20241022", "litellm_proxy/gpt-4o-2024-05-13", "litellm_proxy/o3-mini-2025-01-31",
+        #          # fine-tuned model
+        #          "openai/qwen-7B", "openai/qwen-7B-128k", "openai/ft-qwen-7B", "openai/ft-qwen-7B-128k",
+        #          "openai/qwen-32B", "openai/qwen-32B-128k", "openai/ft-qwen-32B", "openai/ft-qwen-32B-128k",
+        #          "openai/qwen2.5-14b-instruct","openai/qwen2.5-7b-instruct"
+        # ]
     )
     parser.add_argument("--use_function_calling", action="store_true",
                         help='Enable function calling features of LLMs. If disabled, codeact will be used to support function calling.')
