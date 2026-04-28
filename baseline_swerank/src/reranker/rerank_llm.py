@@ -55,7 +55,7 @@ def get_mrr_at_k(eval_dir, dataset_name, data_type, qrels_path, results):
     
     return mrr_at_k
 
-def rerank_beir_outputs(reranker, output_path, data_dir, dataset, data_type, eval_dir, use_logits, use_alpha, llm_top_k, window_size, step_size, batched, rerank_type="text", converted_input_root=None):
+def rerank_beir_outputs(reranker, output_path, data_dir, dataset, data_type, eval_dir, use_logits, use_alpha, llm_top_k, window_size, step_size, batched, rerank_type="text"):
     try:
         # Load dataset based on type
         if rerank_type == "code":
@@ -74,8 +74,7 @@ def rerank_beir_outputs(reranker, output_path, data_dir, dataset, data_type, eva
         # Load converted retriever results
         try:
             if rerank_type == "code":
-                converted_root = converted_input_root or output_path
-                results_output_path = os.path.join(converted_root, dataset, f'{data_type}_rank_100.json')
+                results_output_path = os.path.join(output_path, dataset, f'{data_type}_rank_100.json')
             else:
                 results_output_path = os.path.join(output_path, "beir", dataset, f'{data_type}_rank_100.json')
                 
@@ -87,12 +86,15 @@ def rerank_beir_outputs(reranker, output_path, data_dir, dataset, data_type, eva
 
         # Reranking
         try:
+            infer_start = time.perf_counter()
             reranked_results, histories = rerank_beir_outputs_llm(
                 reranker, results_to_rerank, use_logits=use_logits, use_alpha=use_alpha, 
                 top_k=llm_top_k, window_size=window_size, step_size=step_size, 
                 batched=batched
             )
-        
+            infer_time = time.perf_counter() - infer_start
+            print(f"[{dataset}] Inference time: {infer_time:.2f}s")
+
             # Evaluate results
             converted_results = get_results_to_eval(reranked_results)
             
@@ -121,6 +123,13 @@ def rerank_beir_outputs(reranker, output_path, data_dir, dataset, data_type, eva
                               use_logits, use_alpha, is_llm_result=True)
             save_histories(save_path, dataset, histories, llm_top_k, 
                               use_logits, use_alpha, is_llm_result=True)
+            
+            time_metrics = {"inference_time_secs": round(infer_time, 4)}
+            time_path = os.path.join(save_path, "time_metrics.json")
+            with open(time_path, "w") as f:
+                json.dump(time_metrics, f, indent=4)
+            print(f"Time metrics saved to: {time_path}")
+
             print(f"Reranked results saved successfully for dataset {dataset}")
 
             # Evaluate results
@@ -132,6 +141,8 @@ def rerank_beir_outputs(reranker, output_path, data_dir, dataset, data_type, eva
             for k, mrr in mrr_at_k.items():
                 print(f"MRR@{k}: {mrr:.4f}")
             
+            return infer_time
+            
         except Exception as e:
             print(f"Error during reranking process: {e}")
             raise
@@ -140,23 +151,42 @@ def rerank_beir_outputs(reranker, output_path, data_dir, dataset, data_type, eva
         print(f"Unexpected error in rerank_beir_outputs: {e}")
         raise
 
-def process_dataset(model, output_path, data_dir, dataset, data_type, eval_dir, use_logits, use_alpha, llm_top_k, window_size, step_size, batched, context_size, rerank_type="text", code_prompt_type="docstring", api_config={}, device_rank=None, converted_input_root=None):
+def process_dataset(model, output_path, data_dir, dataset, data_type, eval_dir, use_logits, use_alpha, llm_top_k, window_size, step_size, batched, context_size, rerank_type="text", code_prompt_type="docstring", api_config={}, device_rank=None):
     logger = logging.getLogger(f"{f'[DEVICE {device_rank}]' if device_rank is not None else ''} Reranking logger")
     reranker = load_reranker(model, use_logits, use_alpha, window_size, batched, context_size, rerank_type, code_prompt_type, api_config)
 
     start_time = time.perf_counter()
     full_len = len(dataset)
 
+    all_infer_times = []
+
     for i, item in enumerate(dataset):
         print(f"{f'[DEVICE {device_rank}]' if device_rank is not None else ''} Running reranking on {item}")
-        rerank_beir_outputs(reranker, output_path, data_dir, item, data_type, eval_dir, use_logits, use_alpha, llm_top_k, window_size, step_size, batched, rerank_type, converted_input_root)
+        infer_time = rerank_beir_outputs(reranker, output_path, data_dir, item, data_type, eval_dir, use_logits, use_alpha, llm_top_k, window_size, step_size, batched, rerank_type)
+        if infer_time is not None:
+            all_infer_times.append(infer_time)
 
         # Logging
         num_processed = i+1
         curr_time = time.perf_counter()
         num_samples_left = full_len - num_processed
 
+
         time_elapsed_in_secs = curr_time - start_time
         secs_per_iter = time_elapsed_in_secs/num_processed
         estimated_time_to_process = num_samples_left*secs_per_iter
         logger.warning(f"{f'[DEVICE {device_rank}]' if device_rank is not None else ''} RERANKING LOG {strftime('%m-%d %H:%M:%S', gmtime())} rerank_llm.py] {num_processed}/{full_len} [{strftime('%H:%M:%S', gmtime(int(time_elapsed_in_secs)))}<{strftime('%H:%M:%S', gmtime(int(estimated_time_to_process)))},    {secs_per_iter:.2f}s/it]")
+    if all_infer_times:
+        summary = {
+            "total_inference_time_secs": round(sum(all_infer_times), 4),
+            "avg_inference_time_secs":   round(sum(all_infer_times) / len(all_infer_times), 4),
+            "num_instances":             len(all_infer_times),
+        }
+        summary_path = os.path.join(output_path, data_type, "time_summary.json")
+        os.makedirs(os.path.dirname(summary_path), exist_ok=True)
+        with open(summary_path, "w") as f:
+            json.dump(summary, f, indent=4)
+        print(f"\n===== Time Summary =====")
+        for k, v in summary.items():
+            print(f"{k}: {v}")
+        print(f"Time summary saved to: {summary_path}")

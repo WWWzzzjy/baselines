@@ -7,9 +7,10 @@ from beir.retrieval.evaluation import EvaluateRetrieval
 from .result import Result, ResultsLoader
 from .rankllm import PromptMode, RankLLM
 from .reranker import Reranker
+from .rank_listwise_os_llm import RankListwiseOSLLM
 from .rank_gpt import SafeOpenai
 
-OPENAI_MODEL_KEYS = ["gpt-4o-mini", "gpt-4o", "gpt-4.1", "o1", "o1-mini", "o3-mini", "o4-mini"]
+OPENAI_MODEL_KEYS = [ "gpt-4o-mini", "gpt-4o", "gpt-4.1", "o1", "o1-mini", "o3-mini", "o4-mini" ]
 
 def evaluate_results(dataset, qrels, rerank_results, rerank_type="text"):
     """
@@ -134,13 +135,23 @@ def load_reranker(model, use_logits, use_alpha, window_size, batched, context_si
     else:  # text reranking
         system_message = "You are RankLLM, an intelligent assistant that can rank passages based on their relevancy to the query"
     
-    has_api_keys = bool(api_config.get("keys"))
-    has_api_base = bool(api_config.get("api_base"))
-    use_api_model = model in OPENAI_MODEL_KEYS or has_api_keys or has_api_base
+    if (
+        'keys' in api_config
+        and api_config['keys']
+        and model not in OPENAI_MODEL_KEYS
+        and not api_config.get("api_base")
+    ):
+        raise Exception(
+            f"You passed api_key but the passed model name is either invalid or not supported. "
+            f"For non-OpenAI models, pass --api_base for an OpenAI-compatible endpoint."
+        )
 
     # Initialize the ranking model
+    use_api_model = model in OPENAI_MODEL_KEYS or (
+        api_config.get("keys") and api_config.get("api_base")
+    )
+
     if use_api_model:
-        # OpenAI-compatible API models
         agent = SafeOpenai(
             model=model,
             context_size=context_size,
@@ -155,8 +166,6 @@ def load_reranker(model, use_logits, use_alpha, window_size, batched, context_si
         )
     else:
         # HF, local models
-        from .rank_listwise_os_llm import RankListwiseOSLLM
-
         agent = RankListwiseOSLLM(
             model=model,
             context_size=context_size,

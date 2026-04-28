@@ -5,23 +5,10 @@ import time
 import argparse
 from pathlib import Path
 from reranker import rerank_llm, convert_format
-from datasets import load_dataset
+from local_dataset_utils import instance_id_from_dir, list_local_instance_dirs
 
 import ray
 NUM_GPUS_PER_JOB=1
-
-
-def normalize_dataset_name(dataset_name: str) -> str:
-    normalized = dataset_name.strip().lower().replace("_", "-")
-    aliases = {
-        "swe-bench-lite": "swe-bench-lite",
-        "swebench-lite": "swe-bench-lite",
-        "swe-bench-verified": "swe-bench-verified",
-        "swebench-verified": "swe-bench-verified",
-        "loc-bench": "loc-bench",
-        "locbench": "loc-bench",
-    }
-    return aliases.get(normalized, normalized)
 
 def evaluate_results(eval_dir, dataset_name, qrels_path, results_path):
     """
@@ -77,10 +64,8 @@ def run_convert_and_rerank(args):
     First convert results and then run the reranker on retriever outputs.
     The retriever stores datasets in BEIR format at:
     - CSN: {args.dataset_dir}/code_datasets/csn_{lang}
-    - SWE-bench: {args.dataset_dir}/swe-bench-{lite|verified}-function_{instance_id}
+    - SWE-bench: {args.dataset_dir}/swe-bench-lite-function_{instance_id}
     """
-
-    args.dataset_name = normalize_dataset_name(args.dataset_name)
 
     os.makedirs(args.output_dir, exist_ok=True)
     os.makedirs(args.eval_dir, exist_ok=True)
@@ -93,18 +78,23 @@ def run_convert_and_rerank(args):
     else:
         datasets = []
     
-    if os.path.exists(args.dataset_dir):
-        if 'loc-bench' in args.dataset_name:
-            loc_bench_dataset = load_dataset("czlll/Loc-Bench_V1")['test']
-            valid_datasets = [item['instance_id'] for item in loc_bench_dataset]
-            for qid in valid_datasets:
-                if os.path.exists(os.path.join(args.dataset_dir, f"{args.dataset_name}-function_{qid}")):
-                    datasets.append(f"{args.dataset_name}-function_{qid}")
-        else:
-            datasets.extend([d for d in os.listdir(args.dataset_dir) if d.startswith(f"{args.dataset_name}-function_")])
-
     if not os.path.exists(args.retriever_output_dir):
         raise Exception(f"Retriever output doesn't exist at: {args.retriever_output_dir}")
+
+    if os.path.exists(args.dataset_dir):
+        if args.dataset_name in ["swe-bench-lite", "loc-bench"]:
+            datasets.extend(list_local_instance_dirs(args.dataset_dir, args.dataset_name))
+            retriever_output = convert_format.load_json(args.retriever_output_dir)
+            retriever_instance_ids = {
+                item["instance_id"]
+                for item in retriever_output
+                if item.get("docs")
+            }
+            datasets = [
+                d for d in datasets
+                if instance_id_from_dir(d, args.dataset_name) in retriever_instance_ids
+            ]
+            print(f"Filtered to {len(datasets)} instances with non-empty retriever docs")
 
     if "csn" == args.dataset_name:
         if args.data_type:
@@ -113,7 +103,7 @@ def run_convert_and_rerank(args):
             args.data_type="csn"
         rerank_type="code"
         prompt_type = "docstring"
-    elif args.dataset_name in ["swe-bench-lite", "swe-bench-verified", "loc-bench"]:
+    elif args.dataset_name in ["swe-bench-lite", "loc-bench"]:
         if args.data_type:
             args.data_type=f"{args.data_type}_{args.dataset_name}"
         else:
@@ -142,9 +132,9 @@ def run_convert_and_rerank(args):
     # Create API configs
     api_config = {
         "keys": args.api_key,
-        "api_type": args.api_type,
+        "api_type": "openai",
         "api_base": args.api_base,
-        "api_version": args.api_version,
+        "api_version": None,
         "temperature": args.temperature,
         "top_p": args.top_p,
         "max_tokens": args.max_tokens,
@@ -181,7 +171,7 @@ def run_convert_and_rerank(args):
             futures = [process_dataset_parallel.remote(
                 model=args.model, 
                 output_path=args.output_dir, 
-                data_dir=args.dataset_dir if args.dataset_name in ["swe-bench-lite", "swe-bench-verified", "loc-bench" ]else code_datasets_dir,
+                data_dir=args.dataset_dir if args.dataset_name in ["swe-bench-lite", "loc-bench" ]else code_datasets_dir,
                 dataset=sharded_inputs[i], 
                 data_type=args.data_type, 
                 eval_dir=args.eval_dir,
@@ -204,7 +194,7 @@ def run_convert_and_rerank(args):
         rerank_llm.process_dataset(
             model=args.model, 
             output_path=args.output_dir, 
-            data_dir=args.dataset_dir if args.dataset_name in ["swe-bench-lite", "swe-bench-verified", "loc-bench" ]else code_datasets_dir,
+            data_dir=args.dataset_dir if args.dataset_name in ["swe-bench-lite", "loc-bench" ]else code_datasets_dir,
             dataset=datasets, 
             data_type=args.data_type, 
             eval_dir=args.eval_dir,
@@ -237,19 +227,19 @@ def main():
                       help="Window size for reranking")
     parser.add_argument("--step_size", type=int, default=5,
                       help="Step size for reranking")
-    parser.add_argument("--dataset_name", type=str, default="swe-bench-verified")
+    parser.add_argument("--dataset_name", type=str, default="swe-bench-lite")
     parser.add_argument("--data_type", type=str, default=None)
     parser.add_argument("--use_parallel_reranking", action="store_true")
     parser.add_argument("--tensor_parallel_size", type=int, default=1, help="Multi-gpu inference if set > 1")
+    parser.add_argument("--temperature", type=float, default=0.0)
+    parser.add_argument("--top_p", type=float, default=None)
+    parser.add_argument("--max_tokens", type=int, default=None)
 
     # For API calls
     parser.add_argument("--api_key", type=str, default=None)
     parser.add_argument("--api_type", type=str, default=None)
     parser.add_argument("--api_base", type=str, default=None)
     parser.add_argument("--api_version", type=str, default=None)
-    parser.add_argument("--temperature", type=float, default=0.0)
-    parser.add_argument("--top_p", type=float, default=1.0)
-    parser.add_argument("--max_tokens", type=int, default=32768)
     args = parser.parse_args()
     
     run_convert_and_rerank(args)

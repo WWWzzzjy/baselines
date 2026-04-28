@@ -10,11 +10,8 @@ from tqdm import tqdm
 from functools import partial
 import random
 import numpy as np
+import bitsandbytes as bnb
 import torch.distributed as dist
-try:
-    import bitsandbytes as bnb
-except ImportError:
-    bnb = None
 
 import transformers
 from torch import nn
@@ -46,13 +43,6 @@ START_IDX = ord('A')
 
 def main():
     args = parse_args()
-
-    if bnb is None:
-        raise ImportError(
-            "bitsandbytes is required for reranker training but is not installed. "
-            "Use the supported Python 3.11 environment from the README and reinstall "
-            "the project dependencies."
-        )
     
     # Add this before initializing accelerator
     if dist.is_available() and not dist.is_initialized():

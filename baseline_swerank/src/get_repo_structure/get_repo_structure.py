@@ -31,7 +31,13 @@ repo_to_top_folder = {
 
 
 def checkout_commit(repo_path, commit_id):
+    """Checkout the specified commit in the given local git repository.
+    :param repo_path: Path to the local git repository
+    :param commit_id: Commit ID to checkout
+    :return: None
+    """
     try:
+        # Change directory to the provided repository path and checkout the specified commit
         print(f"Checking out commit {commit_id} in repository at {repo_path}...")
         subprocess.run(["git", "-C", repo_path, "checkout", commit_id], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
         print("Commit checked out successfully.")
@@ -41,50 +47,18 @@ def checkout_commit(repo_path, commit_id):
         print(f"An unexpected error occurred: {e}")
 
 
-def clone_repo(repo_name, repo_playground, commit_id=None):
-    repo_path = f"{repo_playground}/{repo_to_top_folder[repo_name]}"
+def clone_repo(repo_name, repo_playground):
     try:
-        if commit_id:
-            print(
-                f"Fetching repository https://github.com/{repo_name}.git at commit {commit_id} into {repo_path}..."
-            )
-            os.makedirs(repo_path, exist_ok=True)
-            subprocess.run(
-                ["git", "-C", repo_path, "init"],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                check=True,
-            )
-            subprocess.run(
-                ["git", "-C", repo_path, "remote", "add", "origin", f"https://github.com/{repo_name}.git"],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                check=True,
-            )
-            subprocess.run(
-                ["git", "-C", repo_path, "fetch", "--depth", "1", "origin", commit_id],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                check=True,
-            )
-            subprocess.run(
-                ["git", "-C", repo_path, "checkout", "FETCH_HEAD"],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                check=True,
-            )
-            print("Repository commit fetched successfully.")
-            return
 
         print(
-            f"Cloning repository from https://github.com/{repo_name}.git to {repo_path}..."
+            f"Cloning repository from https://github.com/{repo_name}.git to {repo_playground}/{repo_to_top_folder[repo_name]}..."
         )
         subprocess.run(
             [
                 "git",
                 "clone",
                 f"https://github.com/{repo_name}.git",
-                repo_path,
+                f"{repo_playground}/{repo_to_top_folder[repo_name]}",
             ],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
@@ -113,7 +87,8 @@ def get_project_structure_from_scratch(
     # create playground
     os.makedirs(repo_playground)
 
-    clone_repo(repo_name, repo_playground, commit_id=commit_id)
+    clone_repo(repo_name, repo_playground)
+    checkout_commit(f"{repo_playground}/{repo_to_top_folder[repo_name]}", commit_id)
     structure = create_structure(f"{repo_playground}/{repo_to_top_folder[repo_name]}")
     # clean up
     subprocess.run(
