@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="description"
+        content="CoRNStack">
+  <meta name="keywords" content="LLM, Multimodal, Vector Graphics">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>We introduce CoRNStack, a large-scale, high-quality contrastive training dataset for code that spans multiple programming languages. We demonstrate that contrastive training of embedding models using CoRNStack leads to state-of-the-art performance across a variety of code retrieval tasks.</title>
+
+  <link href="https://fonts.googleapis.com/css?family=Google+Sans|Noto+Sans|Castoro"
+        rel="stylesheet">
+
+  <link rel="stylesheet" href="./static/css/bulma.min.css">
+  <link rel="stylesheet" href="./static/css/bulma-carousel.min.css">
+  <link rel="stylesheet" href="./static/css/bulma-slider.min.css">
+  <link rel="stylesheet" href="./static/css/fontawesome.all.min.css">
+  <link rel="stylesheet"
+        href="https://cdn.jsdelivr.net/gh/jpswalsh/academicons@1/css/academicons.min.css">
+  <link rel="stylesheet" href="./static/css/index.css">
+  <link rel="icon" href="./static/images/favicon.svg">
+
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+  <script defer src="./static/js/fontawesome.all.min.js"></script>
+  <script src="./static/js/bulma-carousel.min.js"></script>
+  <script src="./static/js/bulma-slider.min.js"></script>
+  <script src="./static/js/index.js"></script>
+
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      var toggles = document.querySelectorAll('.toggle-section');
+      toggles.forEach(function(toggle) {
+        toggle.addEventListener('click', function() {
+          var content = document.getElementById(toggle.getAttribute('aria-controls'));
+          content.classList.toggle('is-active');
+          toggle.children[1].classList.toggle('fa-angle-down');
+          toggle.children[1].classList.toggle('fa-angle-up');
+        });
+      });
+    });
+  </script>
+
+  <style>
+    .collapse-content {
+      display: none;
+      margin-top: 10px;
+    }
+    .collapse-content.is-active {
+      display: block;
+    }
+    .toggle-section .icon.is-small {
+      transition: transform 0.3s ease;
+    }
+    .toggle-section .fa-angle-up {
+      transform: rotate(180deg);
+    }
+  </style>
+
+</head>
+<body>
+
+<section class="hero">
+  <div class="hero-body">
+    <div class="container is-max-desktop">
+      <div class="columns is-centered">
+        <div class="column has-text-centered">
+          <h1 class="title is-1 publication-title">
+            <!-- <img src="static/images/favicon_vdlm.png" alt="Icon" style="vertical-align: middle; height: 50px; margin-right: 10px; margin-bottom: 9px"> -->
+            CoRNStack: High-Quality Contrastive Data for Better Code Ranking</h1>
+          <div class="is-size-5 publication-authors">
+            <span class="author-block">
+              <a href="https://tarsur909.github.io/">Tarun Suresh</a>*<sup>1,3</sup>,</span>
+            <span class="author-block">
+              <a href="https://gangiswag.github.io">Revanth Gangi Reddy</a>*<sup>1</sup>,</span>
+            <span class="author-block">
+              <a href="">Yifei Xu</a><sup>1,2</sup>,</span>
+            <span class="author-block">
+              <a href=""> Zach Nussbaum</a><sup>3</sup>,</span><br>
+            <span class="author-block">
+              <a href=""> Andriy Mulyar</a><sup>3</sup>,</span>
+            <span class="author-block">
+              <a href="">Brandon Duderstadt</a><sup>3</sup>,</span>
+            <span class="author-block">
+              <a href="https://blender.cs.illinois.edu/hengji.html">Heng Ji</a><sup>1</sup>
+            </span>
+          </div>
+
+          <div class="is-size-5 publication-authors">
+            <sup>1</sup><span class="author-block">University of Illinois Urbana-Champaign,</span><sup>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;2</sup><span class="author-block">Lapis Labs,</span></span><sup>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;3</sup><span class="author-block">Nomic AI</span>
+          </div>
+          <div class="column has-text-centered">
+            <div class="publication-links">
+              <!-- PDF Link. -->
+              <!-- <span class="link-block">
+                <a href=""
+                   class="external-link button is-normal is-rounded is-dark">
+                  <span class="icon">
+                      <i class="fas fa-file-pdf"></i>
+                  </span>
+                  <span>Paper</span>
+                </a>
+              </span> -->
+              <span class="link-block">
+                <a href="https://arxiv.org/pdf/2412.01007"
+                   class="external-link button is-normal is-rounded is-dark">
+                  <span class="icon">
+                      <i class="ai ai-arxiv"></i>
+                  </span>
+                  <span>Paper</span>
+                </a>
+              </span>
+              <!-- Code Link. -->
+              <span class="link-block">
+                <a href="https://github.com/gangiswag/cornstack"
+                   class="external-link button is-normal is-rounded is-dark">
+                  <span class="icon">
+                      <i class="fab fa-github"></i>
+                  </span>
+                  <span>Code</span>
+                </a>
+              </span>
+              <!-- Model Link. -->
+              <span class="link-block">
+                <a href="https://huggingface.co/cornstack/CodeRankEmbed"
+                   class="external-link button is-normal is-rounded is-dark">
+                  <span class="icon">
+                      <p style="font-size:18px">🤗</p>
+                  </span>
+                  <span>CodeRankEmbed</span>
+                </a>
+              <!-- Model Link. -->
+              <span class="link-block">
+                <a href="https://huggingface.co/cornstack/CodeRankLLM"
+                   class="external-link button is-normal is-rounded is-dark">
+                  <span class="icon">
+                      <p style="font-size:18px">🤗</p>
+                  </span>
+                  <span>CodeRankLLM</span>
+                </a>
+                <span class="link-block">
+                  <a href="https://huggingface.co/cornstack"
+                  class="external-link button is-normal is-rounded is-dark">
+                  <span class="icon">
+                    <p style="font-size:18px">🤗</p>
+                  </span>
+                  <span>Dataset</span>
+                </a>
+              <!-- Demo link. -->
+              <span class="link-block">
+                <a href="https://notebooklm.google.com/notebook/6c34937f-40ec-4559-9c8a-2043d5b6e612/audio"
+                   class="external-link button is-normal is-rounded is-dark">
+                  <span class="icon">
+                    <p style="font-size:18px">&#127911;</p>
+                  </span>
+                  <span>NotebookLM Audio</span>
+                </a>
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Teaser Video -->
+<!-- <section class="hero teaser">
+  <div class="container is-max-desktop">
+    <div class="hero-body">
+      <video id="teaser" autoplay muted controls playsinline loop height="100%">
+        <source src="./static/videos/vdlm_teaser_vid.mp4"
+                type="video/mp4">
+      </video>
+    </div>
+  </div>
+</section> -->
+
+
+<!-- Abstract -->
+<section class="section">
+  <div class="container is-max-desktop">
+    <!-- Abstract. -->
+    <div class="columns is-centered has-text-centered">
+      <div class="column is-four-fifths">
+        <h2 class="title is-3">Abstract</h2>
+        <div class="content has-text-justified">
+          <p>
+            <b>Problem:</b> Effective code retrieval is essential for improving code generation, bug fixing, and software maintenance, especially as software complexity grows. Although current code embedding models work well for smaller tasks, they often struggle with real-world challenges like finding bugs in GitHub repositories. This may be due to the noisy, inconsistent data used in their training, which limits their ability to generalize.
+            <br>
+            <br>
+            <b>Contribution:</b> To tackle this, we introduce CoRNStack, a large-scale, high-quality training dataset designed specifically for code retrieval across multiple programming languages. CoRNStack is curated to remove noisy data and includes challenging examples that improve learning. The dataset, which comprises instances of the form of <i>&lt;query, positive, negatives&gt;</i>, supports training code retrieval and reranking models.
+            <br>
+            <br>
+            <b>Results:</b> With contrastive training on CoRNStack, our code retriever model (<a href="https://huggingface.co/cornstack/CodeRankEmbed">CodeRankEmbed</a>) achieves state-of-the-art results across diverse code retrieval tasks. Our fine-tuned reranking model (<a href="https://huggingface.co/cornstack/CodeRankLLM">CodeRankLLM</a>) further enhances the quality of retrieved results, and when combined with our code retriever, it significantly improves the accuracy of finding relevant functions in GitHub issues—a key need in real-world software development.
+          </p>
+        </div>
+        <figure>
+          <img src="static/images/cornstack.png" alt="CoRNStack curation overview." class="cornstack_teaser" style="width: 60%;"/>
+          <figcaption class="has-text-centered">
+            <b>Figure 1:</b> Figure demonstrating CoRNStack curation methodology, with consistency filtering to remove noisy positives and a curriculum-based hard negative mining strategy.
+          </figcaption>
+        </figure>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<section class="section">
+  <div class="container is-max-desktop">
+    <div class="columns is-centered">
+      <div class="column is-full-width">
+        <h2 class="title is-3">CoRNStack Curation</h2>
+        
+        <p>          
+          The effectiveness of code embedding models depends heavily on the quality of their training data, which comes in the form of triples: a query, a relevant (positive) example, and unrelated (negative) examples. Training with high quality positives with hard negatives, examples that are similar to the positives but don't answer the query correctly, results in high performing code embedding models. Directly using open-source code data like <a href="https://arxiv.org/pdf/2402.19173">The Stack v2</a> for this purpose can introduce mismatched or mislabeled pairs, which weakens model performance. To address this, we propose a two-step filtering method that selects the most relevant positives based on similarity scores and adds a diverse range of hard negatives. We call this curated dataset as CoRNStack, short for <b>Co</b>nsistency filtering and <b>R</b>obust <b>N</b>egatives for enriching The <b>Stack</b>v2.
+        </p>    
+        <br>
+        <p>
+          <b>Data Selection:</b> We built our dataset from the <a href="https://huggingface.co/datasets/bigcode/the-stack-v2-dedup">de-duplicated Stackv2</a>, a rich collection of source code in over 600 programming and markup languages. To create text-code pairs, we took function docstrings as text and paired them with their respective functions as code. We applied filters to exclude pairs where the text was non-English, too short, or contained URLs, HTML tags, or invalid characters. Unlike past approaches, we kept pairs with text lengths of 256 tokens or more to help the model handle long query sequences often seen in detailed code retrieval tasks, like those found in GitHub issues.
+        </p>        
+        <br>  
+        <p>
+          <b>Dual Consistency Filtering:</b> To create a high-quality dataset of (text, code) pairs, we use an embedding model (<a href="https://huggingface.co/jinaai/jina-embeddings-v2-base-code">Jina-Code-v2</a>) to get text and code embeddings, then calculate similarity scores between all pairs. We keep a pair if it ranks in the top-two most similar matches and surpasses a set similarity threshold. To evaluate this filtered dataset, we ran automated comparisons with other code datasets like CosQA and CodeSearchNet. Using the <a href="https://huggingface.co/Qwen/Qwen2.5-Coder-7B-Instruct">Qwen2.5-Coder</a> model, we checked if each code snippet fully addresses its corresponding text query across thousands of samples. Our results show CoRNStack has considerably higher <i>&lt;query, positive&gt;</i> correctness than the other datasets.
+        </p>     
+        <br>  
+        <p>
+          <b>Curriculum-Based Hard Negative Mining:</b> We improve model training by carefully selecting challenging negatives to learn from. For each (text, code) pair, we start by filtering out false negatives based on a similarity score threshold to ensure only truly "negative" examples remain. From these, we sample a set of negatives using a probability method that emphasizes more challenging cases, with a temperature parameter that adjusts over time to gradually sharpen the selection. This setup, akin to a curriculum, helps the model learn from progressively harder examples, which enhances diversity and prevents overfitting. Importantly, this strategy is efficient, as it relies on a precomputed similarity matrix, making it both scalable and practical.
+        </p>    
+        </div>
+
+  </div>
+</section>
+
+<section class="section">
+  <div class="container is-max-desktop">
+    <div class="columns is-centered">
+      <div class="column is-full-width">
+        <h2 class="title is-3">CodeRankEmbed Retriever</h2>
+        <div class="content has-text-justified">
+          <p>
+            <b>Model:</b>  We use a bi-encoder architecture for our retriever, with weights shared between the text and code encoder. The retriever is trained using a contrastive learning objective based on the InfoNCE loss. The encoder is initialized with <a href="https://huggingface.co/Snowflake/snowflake-arctic-embed-m-long">Arctic-Embed-M-Long</a>, a text encoder supporting an extended context length of 8,192 tokens and pretrained on large-scale web query-document pairs, along with public text retrieval datasets. We release our trained code retriever as <a href="https://huggingface.co/cornstack/CodeRankEmbed">CodeRankEmbed</a>. 
+          </p>
+          <p>
+            <b>Evaluation Datasets:</b>   We evaluate CodeRankEmbed on a variety of code retrieval tasks under zero-shot settings. We use <a href="https://arxiv.org/abs/1909.09436">CodeSearchNet</a> as the benchmark for function-level text-to-code retrieval, a semantic search task where natural language queries are used to retrieve relevant code snippets. Additionally, to evaluate performance across diverse code retrieval tasks, we use the <a href="https://arxiv.org/pdf/2407.02883">CoIR</a> benchmark, which includes text-to-code, code-to-text, code-to-code, and hybrid code retrieval tasks (retrieving a hybrid of code and textual documents given a hybrid query).
+          </p>
+          <p>
+            <b>Baselines:</b> We compare our finetuned code retriever against state-of-the-art code embedding models of various sizes, both open-source and proprietary. The open-source code embedding models include <a href="https://arxiv.org/pdf/2402.01935">CodeSage</a>, <a href="https://arxiv.org/pdf/2305.07922">CodeT5+</a> and <a href="https://jina.ai/news/elevate-your-code-search-with-new-jina-code-embeddings/"></a>Jina-Code-v2, which are
+            currently leading text-to-code retrieval benchmarks. We also compare with the proprietary <a href="https://blog.voyageai.com/2024/01/23/voyage-code-2-elevate-your-code-retrieval/">Voyage-Code-002</a>.
+          </p>
+          <p>
+            <b>Results:</b>   Our code retriever, despite being smaller than the majority of the baselines, significantly outperforms all open-source and proprietary code embedding models, establishing a new state-of-the-art for code embedding tasks. This demonstrates the robustness of our contrastive training data, with the trained model exhibiting superior cross-task generalization on COIR despite being trained exclusively for only text-to-code retrieval.
+          </p>
+          <!-- <figure>
+            <img src="static/images/full_Code_embed.png" alt="CodeRankEmbed Results" class="CodeRankEmbed"/>
+          </figure> -->
+          <figure>
+            <img src="static/images/coir.png" alt="CoIR Results" class="coir" style="width: 70%;"/>
+          </figure>
+          <figure>
+            <img src="static/images/codesearchnet.png" alt="CodeSearchNet Results" class="codesearchnet" style="width: 70%;"/>
+          </figure>
+        </div>      
+  </div>
+</section>
+
+<section class="section">
+  <div class="container is-max-desktop">
+    <div class="columns is-centered">
+      <div class="column is-full-width">
+        <h2 class="title is-3">CodeRankLLM Reranker</h2>
+        <div class="content has-text-justified">
+          <p>
+            <b>Model:</b>  Our code reranker is based on LLM-based listwise reranking, which has gained prominence for the ability to score multiple passages simultaneously. Training data for listwise reranking was generated by selecting 50,000 <i>&lt;query, positive, negatives&gt;</i> tuples from CoRNStack, filtered to ensure higher similarity scores and better ranks for the positives. Since CoRNStack doesn't contain the ranked ordering data required for training listwise rerankers, we leverage <a href="https://arxiv.org/pdf/2407.02883">Qwen-2.5-32B-Instruct</a> LLM provided ranked orderings for each example to serve as ranking supervision. We train the reranker using a language modeling objective that minimizes the prediction error of the next token in the sequence. We release our trained code reranker as <a href="https://huggingface.co/cornstack/CodeRankLLM">CodeRankLLM</a>. 
+          </p>
+          <br>
+          <p>
+            <b>Baselines and Evaluation:</b>  We compare reranking performance with that of the zero-shot <a href="https://huggingface.co/Qwen/Qwen2.5-Coder-7B-Instruct">Qwen-2.5-Coder-7B-Instruct</a> model, our base model for our finetuning. Since text-based LLMs are typically trained on both text and code data, we include a listwise text reranker as a baseline. Specifically, we fine-tune the <a href="https://huggingface.co/Qwen/Qwen2.5-7B-Instruct">Qwen-2.5-7B-Instruct</a> LLM on 40k GPT-4-labeled <a href="https://huggingface.co/datasets/castorini/rank_zephyr_training_data">listwise reranking instances</a> derived from MS MARCO. We evaluate our models using the <a href="https://arxiv.org/abs/1909.09436">CodeSearchNet</a> and <a href="https://arxiv.org/pdf/2102.04664">AdvTest</a> text-to-code retrieval benchmarks. During inference, we rerank the top 100 results from our code retriever, employing a window size of 10 and a step size of 5 for the listwise LLM rerankers.
+          </p>
+          <br>
+          <p>
+            <b>Results:</b> The text reranker Qwen-2.5-Text, although finetuned with listwise text data, performs strongly across programming languages, likely due to code examples in its pretraining data enhancing code comprehension. In contrast, the code model Qwen-2.5-Code underperforms in zero-shot listwise reranking but improves markedly after finetuning with code-specific listwise data created using CoRNStack.
+          </p>          
+          <figure>
+            <img src="static/images/coderankllm.png" alt="CodeRankLLM Results" class="coderankllm"/>
+            <figcaption class="has-text-centered">
+              <b>Table 1:</b> Ranking performance (MRR@100 in %) for different models from reranking top-100 retrieval results on function-level text-to-code retrieval datasets.
+            </figcaption>
+          </figure>
+
+        </div>      
+  </div>
+</section>
+
+<section class="section">
+  <div class="container is-max-desktop">
+    <div class="columns is-centered">
+      <div class="column is-full-width">
+        <h2 class="title is-3">Function-Localization for Real-World Software Development</h2>
+        <div class="content has-text-justified">
+          <p>
+            Having previously evaluated our CodeRankEmbed and CodeRankLLM models on academic benchmarks, we now demonstrate their utility in assisting software development in real-world settings. Specifically, we focus on the task of function localization, which involves accurately identifying the specific functions that need to be modified in response to a GitHub issue. 
+          </p>
+          <p>
+            <b>Datasets:</b> We evaluate our code retriever+reranker framework based on <a href="https://www.swebench.com">SWE-Bench</a>, a widely used repository-level benchmark that focuses on resolving real-world GitHub issues with code patches passing associated test cases. Specifically, employ <a href="https://www.swebench.com/lite.html">SWE-Bench-Lite</a>, a subset of SWE-Bench, which we reformulated for function localization, where the patched functions are treated as the localization targets. We retained 274 of 300 examples where patches modify existing functions or classes, with the excluded examples introducing code corresponding to new functions or import statements. The GitHub issue serves as the text query, and all functions in the repository are candidates for retrieval. 
+          </p>
+          <p>
+            <b>Baselines and Metrics:</b> Our main baseline, <a href="https://arxiv.org/pdf/2407.01489">Agentless</a>, is an automated tool for tackling software development issues and is a top open-source performer on SWE-Bench-Lite. It operates in two phases: localization and repair. In localization, Agentless first identifies relevant files, then narrows down to specific classes, functions, and edit locations. Given the size of codebases, it uses file location information and GitHub issues to rank files that may need updates, then pinpoints functions needing changes within these files. Since Agentless selects up to three files for edits and localizes functions within them, we evaluate file localization at top 1–3 and function localization at top 5-10. We also compare against code retrieval baselines, excluding proprietary ones due to API costs.
+          </p>
+          <p>
+            <b>Results:</b> Our code retriever significantly outperforms Agentless and other retrieval baselines in function localization accuracy. Applying our code reranker over the retriever results yields consistent improvements in both file and function localization. While SWE-Bench-Lite is constructed from popular open-source Python repositories, we hypothesize that our retrieval-based approach could achieve greater improvements on private repositories, which are typically not included in LLM pretraining data, and we leave this investigation for future work.
+          </p>
+          <figure>
+            <img src="static/images/file_level.png" alt="SWE-Bench File-Level Results" class="file_level" style="width: 70%;"/>
+            <figcaption class="has-text-centered">
+              <b>Figure 2:</b> File localization performance (%) on SWE-Bench-Lite.
+            </figcaption>
+          </figure>
+          <figure>
+            <img src="static/images/function_level.png" alt="SWE-Bench Function-Level Results" class="function_level" style="width: 70%;"/>
+            <figcaption class="has-text-centered">
+              <b>Figure 3:</b> Function localization performance (%) on SWE-Bench-Lite.
+            </figcaption>
+          </figure>
+        </div>  
+            
+  </div>
+</section>
+
+<!-- <section class="section" id="BibTeX">
+  <div class="container is-max-desktop content">
+    <h2 class="title">BibTeX</h2>
+    <pre><code>
+    </code></pre>
+  </div>
+</section> -->
+
+
+<footer class="footer">
+  <div class="container">
+  
+  <div class="content has-text-centered">
+    <div class="columns is-centered">
+      <div class="column is-8">
+        <div class="content">
+          <p>
+            This website's template is borrowed from <a
+              href="https://github.com/nerfies/nerfies.github.io">nerfies</a>. We thank the authors for open-sourcing their code.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

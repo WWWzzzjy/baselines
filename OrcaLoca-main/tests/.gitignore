@@ -1,0 +1,6 @@
+*.jpg
+log/
+*.csv
+*.xlsx
+*.zip
+*.json

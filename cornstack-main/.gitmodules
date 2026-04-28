@@ -1,0 +1,3 @@
+[submodule "llm-reranker"]
+	path = llm-reranker
+	url = https://github.com/gangiswag/llm-reranker.git
