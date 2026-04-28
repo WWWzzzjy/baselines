@@ -28,24 +28,20 @@ class AFL(FL):
             model_name,
             backend,
             logger,
+            max_tokens=2048,
+            temperature=0.0,
+            top_p=1.0,
             **kwargs,
     ):
         super().__init__(instance_id, structure, problem_statement)
-        self.max_tokens = 2048
+        self.max_tokens = max_tokens
+        self.temperature = temperature
+        self.top_p = top_p
         self.model_name = model_name
         self.backend = backend
         self.logger = logger
 
         self.MAX_CONTEXT_LENGTH = 32768 if "qwen2.5-7b" in model_name else 100000
-
-    def _empty_usage(self):
-        return {"completion_tokens": 0, "prompt_tokens": 0}
-
-    def _add_traj_cost(self, total_usage, traj):
-        usage = traj.get("usage", {})
-        for key in ("completion_tokens", "prompt_tokens"):
-            total_usage[key] = total_usage.get(key, 0) + usage.get(key, 0)
-        return traj.get("inference_time_seconds", 0.0)
 
     def _parse_top5_file(self, content: str) -> list[str]:
         if content.count("```") % 2 != 0:
@@ -79,6 +75,7 @@ class AFL(FL):
             logger=self.logger,
             max_tokens=4096,
             temperature=0.85,
+            top_p=self.top_p,
             batch_size=1,
         )
         traj = model.codegen(message, num_samples=1)[0]
@@ -129,13 +126,11 @@ class AFL(FL):
             backend=self.backend,
             logger=self.logger,
             max_tokens=self.max_tokens,
-            temperature=0.0,
+            temperature=self.temperature,
+            top_p=self.top_p,
             batch_size=1,
         )
-        total_usage = self._empty_usage()
-        total_inference_time = 0.0
         traj = model.codegen(message, num_samples=1)[0]
-        total_inference_time += self._add_traj_cost(total_usage, traj)
         traj["prompt"] = message
         reason = traj["response"]
         current_tokens = traj["usage"]["completion_tokens"] + traj["usage"]["prompt_tokens"]
@@ -162,7 +157,6 @@ class AFL(FL):
                 break
             try:
                 traj = model.codegen(message, num_samples=1)[0]
-                total_inference_time += self._add_traj_cost(total_usage, traj)
                 current_tokens += traj["usage"]["completion_tokens"] + traj["usage"]["prompt_tokens"]
             except Exception as e:
                 if "Tokens" in str(e):  # Check if error message indicates context length issue
@@ -214,6 +208,7 @@ class AFL(FL):
         })
         traj = model.codegen(message, num_samples=1)[0]
         traj["prompt"] = message
+        traj["inference_time"] = model.total_inference_time
         raw_output = traj["response"]
 
         self.logger.info(raw_output)
@@ -278,6 +273,7 @@ class AFL(FL):
             logger=self.logger,
             max_tokens=self.max_tokens,
             temperature=temperature,
+            top_p=self.top_p,
             batch_size=num_samples,
         )
         raw_trajs = model.codegen(message, num_samples=num_samples)
@@ -371,10 +367,12 @@ class AFL(FL):
             logger=self.logger,
             max_tokens=self.max_tokens,
             temperature=0.85,
+            top_p=self.top_p,
             batch_size=1,
         )
         traj = model.codegen(message, num_samples=1)[0]
         traj["prompt"] = message
+        traj["inference_time"] = model.total_inference_time
         raw_output = traj["response"]
 
         reason = raw_output
@@ -388,6 +386,7 @@ class AFL(FL):
         })
         traj = model.codegen(message, num_samples=1)[0]
         traj["prompt"] = message
+        traj["inference_time"] = model.total_inference_time
         raw_output = traj["response"]
 
         self.logger.info(raw_output)
@@ -448,7 +447,8 @@ class AFL(FL):
             backend=self.backend,
             logger=self.logger,
             max_tokens=self.max_tokens,
-            temperature=0,
+            temperature=self.temperature,
+            top_p=self.top_p,
             batch_size=1,
         )
         try:
@@ -533,13 +533,11 @@ class AFL(FL):
             backend=self.backend,
             logger=self.logger,
             max_tokens=self.max_tokens,
-            temperature=0.0,
+            temperature=self.temperature,
+            top_p=self.top_p,
             batch_size=1,
         )
-        total_usage = self._empty_usage()
-        total_inference_time = 0.0
         traj = model.codegen(message, num_samples=1)[0]
-        total_inference_time += self._add_traj_cost(total_usage, traj)
         traj["prompt"] = message
         reason = traj["response"]
         current_tokens = traj["usage"]["completion_tokens"] + traj["usage"]["prompt_tokens"]
@@ -635,9 +633,7 @@ or
 False
 ```
 """
-                check_traj = model.codegen([{"role": "user", "content": check_func_retval_prompt}], num_samples=1)[0]
-                total_inference_time += self._add_traj_cost(total_usage, check_traj)
-                check_res = check_traj["response"]
+                check_res = model.codegen([{"role": "user", "content": check_func_retval_prompt}], num_samples=1)[0]["response"]
                 flag = self._parse_output(check_res).strip()
                 print(flag)
                 if flag == "True":
@@ -669,10 +665,8 @@ False
             "content": location_summary.format(bug_file_list=bug_file_content)
         })
         traj = model.codegen(message, num_samples=1)[0]
-        total_inference_time += self._add_traj_cost(total_usage, traj)
         traj["prompt"] = message
-        traj["usage"] = total_usage
-        traj["inference_time_seconds"] = total_inference_time
+        traj["inference_time"] = model.total_inference_time
         raw_output = traj["response"]
 
         self.logger.info(raw_output)
@@ -730,14 +724,12 @@ False
             backend=self.backend,
             logger=self.logger,
             max_tokens=self.max_tokens,
-            temperature=0,
+            temperature=self.temperature,
+            top_p=self.top_p,
             batch_size=1,
         )
 
-        total_usage = self._empty_usage()
-        total_inference_time = 0.0
         traj = model.codegen(message, num_samples=1)[0]
-        total_inference_time += self._add_traj_cost(total_usage, traj)
         traj["prompt"] = message
         raw_output = traj["response"]
 
@@ -756,9 +748,7 @@ False
         # reflection to correct format
         if len(found_files) == 0:
             corrcted_tpl = format_correct_prompt.format(res=raw_output)
-            formated_traj = model.codegen([{"role": "user", "content": corrcted_tpl}], num_samples=1)[0]
-            total_inference_time += self._add_traj_cost(total_usage, formated_traj)
-            formated_res = formated_traj["response"]
+            formated_res = model.codegen([{"role": "user", "content": corrcted_tpl}], num_samples=1)[0]["response"]
             self.logger.info(formated_res)
             model_found_files = self._parse_top5_file(formated_res)
             found_files = [f for f in model_found_files if f in all_files]
@@ -775,23 +765,20 @@ False
             _parsed_path.append(loc)
 
         # reflection with module call graph
-        reflection_traj = model.codegen(
+        reflection_result = model.codegen(
             [{"role": "user", "content": file_reflection_prompt.format(problem_statement=self.problem_statement,
                                                                        structure=show_project_structure(
                                                                            self.structure).strip(),
                                                                        import_content=import_content,
                                                                        pre_files=found_files)}],
-            num_samples=1)[0]
-        total_inference_time += self._add_traj_cost(total_usage, reflection_traj)
-        reflection_result = reflection_traj["response"]
+            num_samples=1)[0]["response"]
         self.logger.info(reflection_result)
         reflection_files = self._parse_top5_file(reflection_result)
         reflection_files = [f for f in reflection_files if f in all_files]
         if len(reflection_files) == 0:
             reflection_files = [get_best_match(f, all_files) for f in reflection_files]
 
-        traj["usage"] = total_usage
-        traj["inference_time_seconds"] = total_inference_time
+        traj["inference_time"] = model.total_inference_time
 
         return (
             reflection_files,
@@ -841,6 +828,7 @@ False
             logger=self.logger,
             max_tokens=self.max_tokens,
             temperature=0,
+            top_p=self.top_p,
             batch_size=1,
         )
         try:
@@ -898,6 +886,7 @@ False
             logger=self.logger,
             max_tokens=self.max_tokens,
             temperature=0.85,
+            top_p=self.top_p,
             batch_size=1,
         )
         traj = model.codegen(message, num_samples=1)[0]
@@ -958,6 +947,7 @@ False
             logger=self.logger,
             max_tokens=self.max_tokens,
             temperature=0,
+            top_p=self.top_p,
             batch_size=1,
         )
 

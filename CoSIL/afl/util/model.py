@@ -1,5 +1,4 @@
 import json
-import os
 import time
 from abc import ABC, abstractmethod
 from typing import List
@@ -14,6 +13,7 @@ class DecoderBase(ABC):
         logger,
         batch_size: int = 1,
         temperature: float = 0.8,
+        top_p: float = 1.0,
         max_new_tokens: int = 1024,
     ) -> None:
         print("Initializing a decoder model: {} ...".format(name))
@@ -21,7 +21,9 @@ class DecoderBase(ABC):
         self.logger = logger
         self.batch_size = batch_size
         self.temperature = temperature
+        self.top_p = top_p
         self.max_new_tokens = max_new_tokens
+        self.total_inference_time = 0.0
 
     @abstractmethod
     def codegen(
@@ -55,12 +57,14 @@ class OpenAIChatDecoder(DecoderBase):
             message=message,
             max_tokens=self.max_new_tokens,
             temperature=self.temperature,
+            top_p=self.top_p,
             batch_size=batch_size,
             model=self.name,
         )
         start_time = time.perf_counter()
         ret = request_chatgpt_engine(config, self.logger)
-        inference_time_seconds = time.perf_counter() - start_time
+        inference_time = time.perf_counter() - start_time
+        self.total_inference_time += inference_time
         if ret:
             responses = [choice.message.content for choice in ret.choices]
             completion_tokens = ret.usage.completion_tokens
@@ -83,7 +87,7 @@ class OpenAIChatDecoder(DecoderBase):
                     "completion_tokens": completion_tokens,
                     "prompt_tokens": prompt_tokens,
                 },
-                "inference_time_seconds": inference_time_seconds,
+                "request_inference_time": inference_time,
             }
         ]
         for response in responses[1:]:
@@ -94,7 +98,7 @@ class OpenAIChatDecoder(DecoderBase):
                         "completion_tokens": 0,
                         "prompt_tokens": 0,
                     },
-                    "inference_time_seconds": 0.0,
+                    "request_inference_time": 0,
                 }
             )
         return trajs
@@ -119,12 +123,16 @@ class DeepSeekChatDecoder(DecoderBase):
                 message=message,
                 max_tokens=self.max_new_tokens,
                 temperature=self.temperature,
+                top_p=self.top_p,
                 batch_size=1,
                 model=self.name,
             )
+            start_time = time.perf_counter()
             ret = request_chatgpt_engine(
                 config, self.logger, base_url="https://api.deepseek.com"
             )
+            inference_time = time.perf_counter() - start_time
+            self.total_inference_time += inference_time
             if ret:
                 trajs.append(
                     {
@@ -133,6 +141,7 @@ class DeepSeekChatDecoder(DecoderBase):
                             "completion_tokens": ret.usage.completion_tokens,
                             "prompt_tokens": ret.usage.prompt_tokens,
                         },
+                        "request_inference_time": inference_time,
                     }
                 )
             else:
@@ -143,6 +152,7 @@ class DeepSeekChatDecoder(DecoderBase):
                             "completion_tokens": 0,
                             "prompt_tokens": 0,
                         },
+                        "request_inference_time": inference_time,
                     }
                 )
 
@@ -494,14 +504,8 @@ def make_model(
     batch_size: int = 1,
     max_tokens: int = 1024,
     temperature: float = 0.0,
+    top_p: float = 1.0,
 ):
-    env_max_tokens = os.environ.get("max_tokens") or os.environ.get("MAX_TOKENS")
-    env_temperature = os.environ.get("temperature") or os.environ.get("TEMPERATURE")
-    if env_max_tokens is not None:
-        max_tokens = int(env_max_tokens)
-    if env_temperature is not None:
-        temperature = float(env_temperature)
-
     if backend == "openai":
         return OpenAIChatDecoder(
             name=model,
@@ -509,6 +513,7 @@ def make_model(
             batch_size=batch_size,
             max_new_tokens=max_tokens,
             temperature=temperature,
+            top_p=top_p,
         )
     elif backend == "deepseek":
         return DeepSeekChatDecoder(
@@ -517,6 +522,7 @@ def make_model(
             batch_size=batch_size,
             max_new_tokens=max_tokens,
             temperature=temperature,
+            top_p=top_p,
         )
     elif backend == "claude":
         return ClaudeChatDecoder(
@@ -525,6 +531,7 @@ def make_model(
             batch_size=batch_size,
             max_new_tokens=max_tokens,
             temperature=temperature,
+            top_p=top_p,
         )
     elif backend == "anthropic":
         return AnthropicChatDecoder(
@@ -533,6 +540,7 @@ def make_model(
             batch_size=batch_size,
             max_new_tokens=max_tokens,
             temperature=temperature,
+            top_p=top_p,
         )
     elif backend == "o1":
         return O1ChatDecoder(
@@ -541,6 +549,7 @@ def make_model(
             batch_size=batch_size,
             max_new_tokens=max_tokens,
             temperature=temperature,
+            top_p=top_p,
         )
     else:
         raise NotImplementedError

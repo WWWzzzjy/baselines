@@ -1,10 +1,10 @@
 import time
-import os
 from typing import Dict, Union
 
 import openai
 import anthropic
 import tiktoken
+import os
 
 
 # def num_tokens_from_messages(message, model="gpt-3.5-turbo-0301"):
@@ -40,16 +40,17 @@ def create_chatgpt_config(
     message: Union[str, list],
     max_tokens: int,
     temperature: float = 1,
+    top_p: float = 1.0,
     batch_size: int = 1,
     system_message: str = "You are a debugging assistant of our Python software.",
     model: str = "gpt-3.5-turbo",
 ) -> Dict:
-    top_p = os.environ.get("top_p") or os.environ.get("TOP_P")
     if isinstance(message, list):
         config = {
             "model": model,
             "max_tokens": max_tokens,
             "temperature": temperature,
+            "top_p": top_p,
             "n": batch_size,
             "messages": [{"role": "system", "content": system_message}] + message,
         }
@@ -58,14 +59,13 @@ def create_chatgpt_config(
             "model": model,
             "max_tokens": max_tokens,
             "temperature": temperature,
+            "top_p": top_p,
             "n": batch_size,
             "messages": [
                 {"role": "system", "content": system_message},
                 {"role": "user", "content": message},
             ],
         }
-    if top_p is not None:
-        config["top_p"] = float(top_p)
     return config
 
 
@@ -83,9 +83,13 @@ def request_chatgpt_engine(config, logger, base_url=None, max_retries=40, timeou
     elif config["model"] == "llama3":
         client = openai.OpenAI(api_key="token-abc123", base_url="http://127.0.0.1:7333/v1")
     else:
+        # client = openai.OpenAI(api_key="", base_url="")
         client = openai.OpenAI(
-            api_key=os.environ.get("OPENAI_API_KEY", ""),
-            base_url=base_url or os.environ.get("OPENAI_API_BASE", "https://api.siliconflow.cn/v1"),
+            api_key=os.environ["DASHSCOPE_API_KEY"],
+            base_url=os.getenv(
+                "DASHSCOPE_BASE_URL",
+                "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            ),
         )
 
 

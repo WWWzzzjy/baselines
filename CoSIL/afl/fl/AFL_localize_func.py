@@ -28,7 +28,6 @@ def localize_instance(
         bug, args, swe_bench_data, existing_instance_ids
 ):
     instance_id = bug["instance_id"]
-    print(f"[func-localize] start instance_id={instance_id}", flush=True)
     log_file = os.path.join(
         args.output_folder, "localization_logs", f"{instance_id}.log"
     )
@@ -41,29 +40,16 @@ def localize_instance(
 
     if bug["instance_id"] in existing_instance_ids:
         logger.info(f"Skipping existing instance_id: {bug['instance_id']}")
-        print(f"[func-localize] skip existing instance_id={instance_id}", flush=True)
         return
 
-    if PROJECT_FILE_LOC:
+    if PROJECT_FILE_LOC is not None:
         project_file = os.path.join(PROJECT_FILE_LOC, bug["instance_id"] + ".json")
-        if os.path.exists(project_file):
-            d = load_json(project_file)
-        else:
-            print(
-                f"[func-localize] missing cached structure {project_file}; generating from repo",
-                flush=True,
-            )
-            d = get_project_structure_from_scratch(
-                bug["repo"], bug["base_commit"], bug["instance_id"], "playground"
-            )
+        d = load_json(project_file)
     else:
         # we need to get the project structure directly
         d = get_project_structure_from_scratch(
             bug["repo"], bug["base_commit"], bug["instance_id"], "playground"
         )
-    os.makedirs("repo_structures", exist_ok=True)
-    with open(os.path.join("repo_structures", instance_id + ".json"), "w") as f:
-        json.dump(d, f)
 
     logger.info(f"================ localize {instance_id} ================")
 
@@ -84,34 +70,28 @@ def localize_instance(
         problem_statement,
         args.model,
         args.backend,
-        logger
+        logger,
+        max_tokens=args.max_tokens,
+        temperature=args.temperature,
+        top_p=args.top_p,
     )
 
     def load_file_func(output_file, instance_id=None):
         file_locations = []
-        file_inference_time = 0.0
 
         with open(output_file, "r") as f:
             for line in f:
                 data = json.loads(line)
                 if data.get("instance_id") == instance_id:
                     file_locations = data.get("found_files", [])
-                    file_inference_time = float(data.get("inference_time_seconds", 0.0) or 0.0)
                     break  # 找到匹配的 instance_id 后退出循环
 
-        return file_locations, file_inference_time
+        return file_locations
 
-    loaded_files, file_inference_time = load_file_func(args.loc_file, instance_id=instance_id)
-    pred_files = loaded_files[: args.top_n]
-    print(
-        f"[func-localize] instance_id={instance_id} candidate_files={len(pred_files)}",
-        flush=True,
-    )
+    pred_files = load_file_func(args.loc_file, instance_id=instance_id)[: args.top_n]
     # print(pred_files, found_related_locs)
     # 构建字典
     topn_func, func_raw_output, func_traj = fl.localize_with_p(file=pred_files, max_retry=args.max_retry)
-    func_inference_time = float(func_traj.get("inference_time_seconds", 0.0) or 0.0)
-    total_inference_time = file_inference_time + func_inference_time
 
 
     with open(args.output_file, "a") as f:
@@ -122,16 +102,10 @@ def localize_instance(
                     "found_files": pred_files,
                     "found_related_locs": topn_func,
                     "func_traj": func_traj,
-                    "file_inference_time_seconds": file_inference_time,
-                    "func_inference_time_seconds": func_inference_time,
-                    "inference_time_seconds": total_inference_time,
                 }
             )
             + "\n"
         )
-        f.flush()
-        os.fsync(f.fileno())
-    print(f"[func-localize] done instance_id={instance_id} loc_files={len(topn_func)}", flush=True)
 
 
 def localize(args):
@@ -139,26 +113,16 @@ def localize(args):
     #     swe_bench_data = load_from_disk("./datasets/SWE-bench_Verified_test")
     # else:
     #     swe_bench_data = load_from_disk("./datasets/SWE-bench_Lite_test")
-    local_dataset_path = os.path.join("datasets", args.dataset)
-    if os.path.exists(local_dataset_path):
-        print(f"[func-localize] loading local dataset from {local_dataset_path}", flush=True)
-        swe_bench_data = load_from_disk(local_dataset_path)
-    elif "sampled" in args.dataset:
-        print(f"[func-localize] loading sampled dataset from ./datasets/{args.dataset}", flush=True)
+    if "sampled" in args.dataset:
         swe_bench_data = load_from_disk(f"./datasets/{args.dataset}")
     else:
-        print(f"[func-localize] loading hub dataset {args.dataset} split=test", flush=True)
         swe_bench_data = load_dataset(args.dataset, split="test")
-    original_len = len(swe_bench_data)
-    if args.num_instances > 0:
+
+    if args.n_instances is not None:
         swe_bench_data = swe_bench_data.select(
-            range(min(args.num_instances, len(swe_bench_data)))
+            range(min(args.n_instances, len(swe_bench_data)))
         )
-    print(
-        f"[func-localize] dataset ready total={original_len} selected={len(swe_bench_data)} "
-        f"num_threads={args.num_threads} loc_file={args.loc_file} output={args.output_file}",
-        flush=True,
-    )
+
     existing_instance_ids = (
         load_existing_instance_ids(args.output_file) if args.skip_existing else set()
     )
@@ -199,6 +163,8 @@ def main():
     parser.add_argument("--max_retry", type=int, default=10)
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--top_n", type=int, default=5)
+    parser.add_argument("--top_p", type=float, default=0.95)
+    parser.add_argument("--max-tokens", "--max_tokens", type=int, default=32768)
     parser.add_argument("--add_space", action="store_true")
     parser.add_argument("--no_line_number", action="store_true")
     parser.add_argument("--sticky_scroll", action="store_true")
@@ -217,12 +183,6 @@ def main():
         default=1,
         help="Number of threads to use for creating API requests",
     )
-    parser.add_argument(
-        "--num_instances",
-        type=int,
-        default=0,
-        help="Number of dataset instances to run. Use 0 to run all instances.",
-    )
     parser.add_argument("--target_id", type=str)
     parser.add_argument(
         "--skip_existing",
@@ -240,6 +200,7 @@ def main():
     parser.add_argument(
         "--backend", type=str, default="openai", choices=["openai", "deepseek", "anthropic", "claude"]
     )
+    parser.add_argument("--n_instance", "--n_instances", dest="n_instances", type=int, default=None)
 
     args = parser.parse_args()
 

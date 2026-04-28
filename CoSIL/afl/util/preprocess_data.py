@@ -649,28 +649,16 @@ PROJECT_FILE_LOC = os.environ.get("PROJECT_FILE_LOC", None)
 
 
 def get_repo_structure(instance_id: str, repo_name, base_commit, playground):
-    project_file = None
-    if PROJECT_FILE_LOC:
-        project_file = os.path.join(PROJECT_FILE_LOC, instance_id + ".json")
 
-    if project_file and os.path.exists(project_file):
-        with open(project_file) as f:
+    if PROJECT_FILE_LOC is not None:
+        with open(PROJECT_FILE_LOC + "/" + instance_id + ".json") as f:
             d = json.load(f)
         repo_structure = d["structure"]
     else:
-        if project_file:
-            print(
-                f"[repo-structure] missing cached structure {project_file}; generating from repo",
-                flush=True,
-            )
         d = get_project_structure_from_scratch(
             repo_name, base_commit, instance_id, playground
         )
         repo_structure = d["structure"]
-
-    os.makedirs("repo_structures", exist_ok=True)
-    with open(os.path.join("repo_structures", instance_id + ".json"), "w") as f:
-        json.dump(d, f)
 
     return repo_structure
 
