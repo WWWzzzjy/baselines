@@ -1,278 +1,134 @@
-# SweRank+ Baseline Eval 说明
+# SweRank
 
-这份说明对应当前仓库里已经跑通的 baseline eval 流程。
+SweRank is a framework for software issue localization that uses a two-stage retrieve-and-rerank pipeline. It first retrieves relevant code snippets for a given issue and then reranks them to find the most likely functions to fix the issue.
 
-目标：
+Link to Paper: [https://arxiv.org/pdf/2505.07849](https://arxiv.org/pdf/2505.07849)
 
-- 使用 `SweRankEmbed-Small` 跑 retriever
-- 使用阿里云 DashScope 兼容 OpenAI API 的大模型做 rerank
-- 输出以下指标：
-  - `Func Acc@3`
-  - `Func F1@3`
-  - `Files Acc@5`
-  - `Files F1@5`
-  - `retriever_time_seconds`
-  - `rerank_time_seconds`
-  - `total_time_seconds`
-  - token 统计
-- 支持多次运行并在 `eval_results` 中计算方差
+## Setup
 
-## 1. 环境
-
-要求在 `swerank` 虚拟环境中运行。
-
-示例：
-
+Clone the repository and install the required dependencies:
 ```bash
-conda activate swerank
+git clone https://github.com/gangiswag/SweRank.git
 cd SweRank
+conda create --name swerank python=3.11.9
+pip install -r requirements.txt
+export PYTHONPATH="$(pwd)/src"
 ```
 
-如果环境里缺包，至少需要确保这些依赖可用：
+## Reproducing Paper Results
 
-- `datasets`
-- `beir`
-- `sentence_transformers`
-- `openai`
-- `einops`
-- `torch`
+Follow these steps to reproduce the evaluation results from our paper.
 
-## 2. 数据
+### 1. Download Evaluation Datasets
 
-当前默认流程面向：
+The processed versions of `SWE-Bench-Lite` and `LocBench` datasets are available for download [here](https://drive.google.com/file/d/1pjWkpEfFRAts5hkcCGFSoBW1HiQQTsTo/view?usp=share_link). You will need to download and unzip the file to get the `datasets` folder, which is required for the evaluation scripts.
 
-- `SWE-bench Lite`
+### 2. Run Evaluation
 
-也支持显式指定：
+#### SweRankEmbed Evaluation (Retrieval)
 
-- `swe-bench-lite`
-- `swe-bench-verified`
-
-脚本使用的数据目录是：
-
+To run the `SweRankEmbed-Small` retriever on `SWE-Bench-Lite`:
 ```bash
-./datasets
+bash script/run_retriever.sh Salesforce/SweRankEmbed-Small SweRankEmbed-Small <path_to_datasets_folder> swe-bench-lite
 ```
 
-仓库现在支持在 `datasets/` 不存在或实例数不足时，自动构建最小可跑的本地 BEIR 子集。
-
-说明：
-
-- 如果本地已有足够的 `datasets/<dataset>-function_*` 目录，脚本会直接使用本地数据，不会重新构建语料。
-- 如果本地数据不存在或数量不足，脚本会自动构建缺失语料；构建语料时需要从 GitHub 获取目标 repo。
-
-当前本地子集目录命名格式如下：
-
+To run the retriever on `LocBench`:
 ```bash
-datasets/swe-bench-lite-function_<instance_id>
+bash script/run_retriever.sh Salesforce/SweRankEmbed-Small SweRankEmbed-Small <path_to_datasets_folder> loc-bench
 ```
 
-每个实例目录下包含：
-
-- `corpus.jsonl`
-- `queries.jsonl`
-- `qrels/test.tsv`
-- `metadata.json`
-
-## 3. 运行脚本
-
-主入口脚本：
-
-[script/run_baseline_eval_dashscope.sh](/Users/Zhuanz/Documents/pyproject/baselines/baseline_swerank/script/run_baseline_eval_dashscope.sh)
-
-最常用命令：
-
+To run the `SweRankEmbed-Large` retriever, replace the model name in the commands above:
 ```bash
-bash script/run_baseline_eval_dashscope.sh
+bash script/run_retriever.sh Salesforce/SweRankEmbed-Large SweRankEmbed-Large <path_to_datasets_folder> swe-bench-lite
+bash script/run_retriever.sh Salesforce/SweRankEmbed-Large SweRankEmbed-Large <path_to_datasets_folder> loc-bench
 ```
 
-含义：
+#### SweRankLLM Evaluation (Reranking)
 
-- `./datasets`：默认数据目录
-- `swe-bench-lite`：默认数据集名
+The reranking scripts use the JSON file with retriever results as input.
 
-## 4. 默认配置
-
-### Retriever
-
-- `RETRIEVER_MODEL_NAME=Salesforce/SweRankEmbed-Small`
-- `RETRIEVER_MODEL_TAG=SweRankEmbed-Small`
-- `RETRIEVER_BATCH_SIZE=16`
-- `RETRIEVER_SEQUENCE_LENGTH=1024`
-
-### Reranker API
-
-- `OPENAI_API_BASE=https://dashscope.aliyuncs.com/compatible-mode/v1`
-- `OPENAI_API_KEY=<你的 key>`
-- `LOCAGENT_MODEL=qwen3-coder-plus`
-- `RERANK_TAG=rerank-small`
-
-### LLM 采样参数
-
-- `TEMPERATURE=0.6`
-- `TOP_P=0.95`
-- `MAX_TOKENS=32768`
-
-### Rerank 参数
-
-- `TOP_K=100`
-- `WINDOW_SIZE=10`
-- `STEP_SIZE=5`
-
-### 其他
-
-- `NUM_INSTANCES=1`
-- `NUM_RUNS=3`
-
-说明：
-
-- `NUM_INSTANCES=0` 表示使用当前数据目录下所有可用 instance
-- `NUM_INSTANCES>0` 表示只取前 N 条可用 instance
-
-## 5. 日志
-
-日志文件默认写到：
-
-[logs/baseline_eval_dashscope.log](/Users/Zhuanz/Documents/pyproject/swerank/SweRank/logs/baseline_eval_dashscope.log)
-
-实时查看：
-
+To run reranking on `SweRankEmbed-Small` outputs with the `SweRankLLM-Small` model on `SWE-Bench-Lite`:
 ```bash
-tail -f logs/baseline_eval_dashscope.log
+bash script/run_rerank.sh SweRankEmbed-Small Salesforce/SweRankLLM-Small SweRankLLM-Small <path_to_datasets_folder> swe-bench-lite
 ```
 
-## 6. 输出文件说明
-
-### `outputs/`
-
-这里放中间结果。
-
-#### Retriever 结果
-
-- `outputs/retriever_results.json`
-  - retriever 主结果，后续 rerank 直接读取它
-- `outputs/retriever_results_per_instance.json`
-  - 和上面内容相同，但命名更直观
-- `outputs/retriever_results_checkpoint.jsonl`
-  - 逐条 checkpoint，用于中途中断后恢复
-
-#### Retriever 评测
-
-- `outputs/retriever_eval_summary.json`
-  - retriever 平均评测结果
-- `outputs/retriever_eval_per_instance.json`
-  - 每条 instance 的 retriever 评测结果
-- `outputs/retriever_eval_checkpoint.jsonl`
-  - 逐条 checkpoint
-
-#### Rerank 输入
-
-- `outputs/retriever/<instance_dir>/<rerank_tag>-runN_rank_100.json`
-
-这部分是从 retriever 结果转换来的 rerank 输入，不是最终结果。
-
-#### Rerank 输出
-
-- `outputs/rerank-small-run1/<instance_dir>/rerank_100_llm_gen_num.json`
-- `outputs/rerank-small-run1/<instance_dir>/rerank_100_llm_gen_num_histories.json`
-- `outputs/rerank-small-run2/...`
-
-其中：
-
-- `rerank_100_llm_gen_num.json`
-  - rerank 后的最终排序结果
-- `rerank_100_llm_gen_num_histories.json`
-  - 每次 LLM 调用的 prompt/response/usage/latency
-
-### `eval_results/`
-
-这里放最终评测汇总。
-
-主文件：
-
-- `eval_results/dashscope-baseline-SweRankEmbed-Small_swe-bench-lite_baseline_eval.json`
-
-结构：
-
-- `config`
-  - 本次运行配置
-- `runs`
-  - 每次 run 的单独结果
-- `summary`
-  - 多次运行的均值和方差
-
-## 7. 指标说明
-
-当前最终关注的指标是：
-
-- `func_acc_at_3`
-- `func_f1_at_3`
-- `files_acc_at_5`
-- `files_f1_at_5`
-- `retriever_time_seconds`
-- `rerank_time_seconds`
-- `total_time_seconds`
-- `prompt_tokens`
-- `completion_tokens`
-- `total_tokens`
-
-说明：
-
-- `total_time_seconds = retriever_time_seconds + rerank_time_seconds`
-- 当前方差是“多次运行之间”的方差，不是一次运行内样本之间的方差
-
-## 8. 可恢复性
-
-当前 retriever 已经改成：
-
-- 逐条 instance 落盘
-- 支持 checkpoint
-- 再次启动时会跳过已完成 instance
-
-因此如果中途中断，不需要从 0 开始。
-
-## 9. 关于方差
-
-只有当：
-
+To evaluate on `LocBench`:
 ```bash
-NUM_RUNS >= 2
+bash script/run_rerank.sh SweRankEmbed-Small Salesforce/SweRankLLM-Small SweRankLLM-Small <path_to_datasets_folder> loc-bench
 ```
 
-时，`summary.variance` 才有意义。
-
-如果只跑 1 次，方差会是 `0.0`，这不是 bug，而是因为没有跨 run 的波动可计算。
-
-## 10. 当前这份实现的定位
-
-这份仓库当前跑通的是：
-
-- `retrieve + rerank` baseline
-
-不是论文中完整的多轮 agent 系统。
-
-也就是说当前流程是：
-
-1. retriever 召回候选函数
-2. reranker 用 LLM 对候选函数做 listwise 重排
-3. 输出定位指标
-
-## 11. 建议使用方式
-
-如果只是验证流程是否通，建议先跑：
-
+To perform reranking with GPT models:
 ```bash
-bash script/run_baseline_eval_dashscope.sh ./datasets swe-bench-lite 1 1
+bash script/run_rerank_gpt.sh ${retriever_name} ${dataset_name}
+```
+Here, `${retriever_name}` is the name of the retriever output (e.g., `SweRankEmbed-Small`), and `${dataset_name}` is the evaluation dataset (e.g., `swe-bench-lite`).
+
+## Creating the SweLoc Training Dataset
+
+The training data, which we call `SweLoc`, is collected from GitHub issues and pull requests from popular public Python repositories. The collection process is heavily based on [SWE-Bench](https://github.com/SWE-bench/SWE-bench).
+
+### 1. Setup
+
+Set your GitHub access token as an environment variable. You can generate a token from your [GitHub settings](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens).
+```bash
+export GITHUB_TOKEN=<your_github_token_here>
 ```
 
-如果要验证方差逻辑，建议跑：
+### 2. Collect Raw Data
 
+The first step is to collect GitHub issues and their corresponding human-written patches.
 ```bash
-bash script/run_baseline_eval_dashscope.sh ./datasets swe-bench-lite 3 2
+cd src/collect
+bash collect_data.sh
 ```
 
-如果要正式按要求产出方差，建议跑：
+### 3. Mine Negatives for Retriever Data
 
+After collecting issues and the functions modified in patches, this step mines hard negatives from other functions in the repository. This creates a contrastive dataset for training the retriever model.
+
+From the `src/collect` directory, run:
 ```bash
-bash script/run_baseline_eval_dashscope.sh ./datasets swe-bench-lite 0 3
+cd ..
+bash negative_mining.sh
+```
+This script performs quality filtering and saves the retriever training data to `repo_contrastive_mined_filtered.jsonl`.
+
+### 4. Construct Reranker Data
+
+To generate training data for the reranker from the contrastive mined dataset, run the following from the `src` directory:
+```bash
+bash get_reranker_data.sh
+```
+
+## Training Models
+
+### Retriever Training
+The file `repo_contrastive_mined_filtered.jsonl` created in the data creation step can be used for contrastive training of a retriever model. The training script for the retriever is not included in this repository.
+
+### Reranker Training
+
+#### Single-Node Training
+For training on a single machine with multiple GPUs, run:
+```bash
+bash script/run_train_reranker_single_node.sh
+```
+Note: You will need to specify the number of GPUs to be used inside the script.
+
+#### Multi-Node Training
+For distributed training across multiple nodes, run:
+```bash
+bash script/run_train_reranker_multi_node.sh
+```
+You will have to set your distributed training arguments within the script. We provide a sample script for a SLURM cluster at `script/slurm_run_multinode_train.sh`. Make sure to load any required modules within the example script as well.
+
+## Citation
+
+If you find this work useful in your research, please consider citing our paper:
+```
+@article{reddy2025swerank,
+  title={SweRank: Software Issue Localization with Code Ranking},
+  author={Reddy, Revanth Gangi and Suresh, Tarun and Doo, JaeHyeok and Liu, Ye and Nguyen, Xuan Phi and Zhou, Yingbo and Yavuz, Semih and Xiong, Caiming and Ji, Heng and Joty, Shafiq},
+  journal={arXiv preprint arXiv:2505.07849},
+  year={2025}
+}
 ```

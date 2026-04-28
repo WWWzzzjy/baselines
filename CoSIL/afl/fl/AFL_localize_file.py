@@ -22,7 +22,6 @@ def localize_instance(
     bug, args, swe_bench_data, start_file_locs, existing_instance_ids, write_lock=None
 ):
     instance_id = bug["instance_id"]
-    print(f"[file-localize] start instance_id={instance_id}", flush=True)
     log_file = os.path.join(
         args.output_folder, "localization_logs", f"{instance_id}.log"
     )
@@ -35,7 +34,6 @@ def localize_instance(
 
     if instance_id in existing_instance_ids:
         logger.info(f"Skipping existing instance_id: {bug['instance_id']}")
-        print(f"[file-localize] skip existing instance_id={instance_id}", flush=True)
         return
 
     structure = get_repo_structure(
@@ -61,6 +59,9 @@ def localize_instance(
             args.model,
             args.backend,
             logger,
+            max_tokens=args.max_tokens,
+            top_p=args.top_p,
+            temperature=args.temperature
         )
         found_files, additional_artifact_loc_file, file_traj = fl.file_localize_with_g(
             mock=args.mock
@@ -85,39 +86,25 @@ def localize_instance(
                     "instance_id": instance_id,
                     "found_files": found_files,
                     "file_traj": file_traj,
-                    "inference_time_seconds": file_traj.get("inference_time_seconds", 0.0),
                 }
             )
             + "\n"
         )
-        f.flush()
-        os.fsync(f.fileno())
     if write_lock is not None:
         write_lock.release()
-    print(f"[file-localize] done instance_id={instance_id} found_files={len(found_files)}", flush=True)
 
 
 def localize(args):
-    local_dataset_path = os.path.join("datasets", args.dataset)
-    if os.path.exists(local_dataset_path):
-        print(f"[file-localize] loading local dataset from {local_dataset_path}", flush=True)
-        swe_bench_data = load_from_disk(local_dataset_path)
-    elif "sampled" in args.dataset:
-        print(f"[file-localize] loading sampled dataset from ./datasets/{args.dataset}", flush=True)
+    if "sampled" in args.dataset:
         swe_bench_data = load_from_disk(f"./datasets/{args.dataset}")
     else:
-        print(f"[file-localize] loading hub dataset {args.dataset} split=test", flush=True)
         swe_bench_data = load_dataset(args.dataset, split="test")
-    original_len = len(swe_bench_data)
-    if args.num_instances > 0:
+
+    if args.n_instances is not None:
         swe_bench_data = swe_bench_data.select(
-            range(min(args.num_instances, len(swe_bench_data)))
+            range(min(args.n_instances, len(swe_bench_data)))
         )
-    print(
-        f"[file-localize] dataset ready total={original_len} selected={len(swe_bench_data)} "
-        f"num_threads={args.num_threads} output={args.output_file}",
-        flush=True,
-    )
+
     start_file_locs = load_jsonl(args.start_file) if args.start_file else None
     existing_instance_ids = (
         load_existing_instance_ids(args.output_file) if args.skip_existing else set()
@@ -225,7 +212,9 @@ def main():
     parser.add_argument("--related_level", action="store_true")
     parser.add_argument("--fine_grain_line_level", action="store_true")
     parser.add_argument("--top_n", type=int, default=3)
-    parser.add_argument("--temperature", type=float, default=0.0)
+    parser.add_argument("--temperature", type=float, default=0.6)
+    parser.add_argument("--top_p", type=float, default=0.95)
+    parser.add_argument("--max_tokens", type=int, default=32768)
     parser.add_argument("--num_samples", type=int, default=1)
     parser.add_argument("--compress", action="store_true")
     parser.add_argument("--compress_assign", action="store_true")
@@ -241,17 +230,12 @@ def main():
     parser.add_argument("--keep_old_order", action="store_true")
     parser.add_argument("--irrelevant", action="store_true")
     parser.add_argument("--direct_edit_loc", action="store_true")
+    parser.add_argument("--n_instance", "--n_instances", dest="n_instances", type=int, default=None)
     parser.add_argument(
         "--num_threads",
         type=int,
         default=1,
         help="Number of threads to use for creating API requests",
-    )
-    parser.add_argument(
-        "--num_instances",
-        type=int,
-        default=0,
-        help="Number of dataset instances to run. Use 0 to run all instances.",
     )
     parser.add_argument("--target_id", type=str)
     parser.add_argument(

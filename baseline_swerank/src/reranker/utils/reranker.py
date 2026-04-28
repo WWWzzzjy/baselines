@@ -1,7 +1,6 @@
 from datetime import datetime
 from pathlib import Path
 from typing import List
-import copy
 import os
 import time
 
@@ -59,10 +58,6 @@ class Reranker:
         histories = []
         curr_costs = []
         for result in tqdm(retrieved_results):
-            if hasattr(self._agent, "_history"):
-                self._agent._history = []
-            if hasattr(self._agent, "_curr_cost"):
-                self._agent._curr_cost = 0
             rerank_result = self._agent.sliding_windows(
                 result,
                 use_logits=use_logits,
@@ -74,7 +69,7 @@ class Reranker:
                 logging=logging,
             )
             rerank_results.append(rerank_result)
-            histories.append(copy.deepcopy(self._agent._history))
+            histories.append(self._agent._history)
             
             if hasattr(self._agent, "_curr_cost"):
                 print(f"Current run cost: {self._agent._curr_cost}")

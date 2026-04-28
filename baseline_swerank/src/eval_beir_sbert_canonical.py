@@ -17,122 +17,13 @@ import csv
 from sentence_transformers import SentenceTransformer
 from collections import defaultdict
 import torch
-
-
-def normalize_dataset_name(dataset_name: str) -> str:
-    normalized = dataset_name.strip().lower().replace("_", "-")
-    aliases = {
-        "swe-bench-verified": "swe-bench-verified",
-        "swebench-verified": "swe-bench-verified",
-        "swe-bench-lite": "swe-bench-lite",
-        "swebench-lite": "swe-bench-lite",
-        "loc-bench": "loc-bench",
-        "locbench": "loc-bench",
-    }
-    return aliases.get(normalized, normalized)
+from local_dataset_utils import instance_id_from_dir, list_local_instance_dirs
 
 #### Just some code to print debug information to stdout
 logging.basicConfig(format='%(asctime)s - %(message)s',
                     datefmt='%Y-%m-%d %H:%M:%S',
                     level=logging.INFO,
                     handlers=[LoggingHandler()])
-
-
-def load_jsonl(file_path: str) -> list[dict]:
-    if not os.path.exists(file_path):
-        return []
-    with open(file_path, "r", encoding="utf-8") as handle:
-        return [json.loads(line) for line in handle if line.strip()]
-
-
-def append_jsonl(file_path: str, row: dict) -> None:
-    with open(file_path, "a", encoding="utf-8") as handle:
-        handle.write(json.dumps(row, ensure_ascii=False) + "\n")
-
-
-def instance_id_from_dir(instance_dir: str, prefix: str) -> str:
-    if instance_dir.startswith(prefix):
-        return instance_dir[len(prefix):]
-    return instance_dir
-
-
-def build_retriever_output_paths(results_file: str, output_file: str) -> dict:
-    results_path = pathlib.Path(results_file)
-    output_path = pathlib.Path(output_file)
-
-    if results_path.stem.endswith("_results"):
-        results_per_instance_name = results_path.stem + "_per_instance.json"
-        results_checkpoint_name = results_path.stem + "_checkpoint.jsonl"
-    else:
-        results_per_instance_name = results_path.stem + "_per_instance.json"
-        results_checkpoint_name = results_path.stem + "_checkpoint.jsonl"
-
-    if output_path.stem.endswith("_summary"):
-        eval_summary_name = output_path.name
-        eval_per_instance_name = output_path.stem.replace("_summary", "_per_instance") + ".json"
-        eval_checkpoint_name = output_path.stem.replace("_summary", "_checkpoint") + ".jsonl"
-    else:
-        eval_summary_name = output_path.stem + "_summary.json"
-        eval_per_instance_name = output_path.stem + "_per_instance.json"
-        eval_checkpoint_name = output_path.stem + "_checkpoint.jsonl"
-
-    return {
-        "results": str(results_path),
-        "results_per_instance": str(results_path.with_name(results_per_instance_name)),
-        "results_checkpoint": str(results_path.with_name(results_checkpoint_name)),
-        "eval_summary": str(output_path.with_name(eval_summary_name)),
-        "eval_per_instance": str(output_path.with_name(eval_per_instance_name)),
-        "eval_checkpoint": str(output_path.with_name(eval_checkpoint_name)),
-    }
-
-
-def sync_results_files(dataset, docs_by_instance, eval_rows, results_file, output_file):
-    paths = build_retriever_output_paths(results_file, output_file)
-
-    completed_dataset_rows = []
-    for row in dataset:
-        instance_id = row["instance_id"]
-        if instance_id not in docs_by_instance:
-            continue
-        row = dict(row)
-        row["docs"] = docs_by_instance[instance_id]
-        completed_dataset_rows.append(row)
-
-    with open(paths["results"], "w", encoding="utf-8") as handle:
-        json.dump(completed_dataset_rows, handle, ensure_ascii=False, indent=2)
-
-    with open(paths["results_per_instance"], "w", encoding="utf-8") as handle:
-        json.dump(completed_dataset_rows, handle, ensure_ascii=False, indent=2)
-
-    if eval_rows:
-        avg_eval_results = {}
-        for key, value in eval_rows[0].items():
-            if isinstance(value, dict):
-                avg_eval_results.update({
-                    metric_key: sum(row[key][metric_key] for row in eval_rows) / len(eval_rows)
-                    for metric_key in value.keys()
-                })
-            elif isinstance(value, float):
-                avg_eval_results[key] = sum(row[key] for row in eval_rows) / len(eval_rows)
-            else:
-                raise ValueError(f"Unsupported eval value type for key={key}: {type(value)}")
-    else:
-        avg_eval_results = {}
-
-    with open(paths["eval_summary"], "w", encoding="utf-8") as handle:
-        json.dump(avg_eval_results, handle, ensure_ascii=False, indent=2)
-
-    with open(paths["eval_per_instance"], "w", encoding="utf-8") as handle:
-        json.dump(eval_rows, handle, ensure_ascii=False, indent=2)
-
-    logging.info(
-        "Checkpointed %d instances to %s, %s, %s, and %s",
-        len(completed_dataset_rows),
-        paths["results"],
-        paths["eval_summary"],
-        paths["results_per_instance"],
-        paths["eval_per_instance"],
-    )
 
 def load_json(file_path: str) -> dict:
     with open(file_path, 'r') as f:
@@ -176,7 +67,6 @@ def save_beir_results_to_tsv_list(all_results, output_file):
     save_beir_results_to_tsv(results_dct, output_file) 
 
 def main():
-    args.dataset = normalize_dataset_name(args.dataset)
 
     args.model_name_or_path = args.model
 
@@ -190,26 +80,18 @@ def main():
 
     if args.dataset == "swe-bench-lite":
         dataset = load_dataset("princeton-nlp/SWE-bench_Lite")[args.split]
-    elif args.dataset == "swe-bench-verified":
-        dataset = load_dataset("princeton-nlp/SWE-bench_Verified")[args.split]
+        dataset_records = [dict(item) for item in dataset]
     elif args.dataset == "loc-bench":
-        dataset = load_dataset("czlll/Loc-Bench_V1")[args.split]
+        instance_list = list_local_instance_dirs(args.dataset_dir, args.dataset, args.split, args.level)
+        dataset_records = [
+            {"instance_id": instance_id_from_dir(ins_dir, args.dataset, args.split, args.level)}
+            for ins_dir in instance_list
+        ]
     else:
         raise ValueError(f"Dataset {args.dataset} not supported")
 
-    output_paths = build_retriever_output_paths(args.results_file, args.output_file)
-    results_sidecar = output_paths["results_checkpoint"]
-    eval_sidecar = output_paths["eval_checkpoint"]
-
-    completed_rows = load_jsonl(results_sidecar)
-    completed_eval_rows = load_jsonl(eval_sidecar)
-    docs_by_instance = {row["instance_id"]: row["docs"] for row in completed_rows}
-    completed_ids = set(docs_by_instance.keys())
-
-    if completed_ids:
-        logging.info("Resuming retriever run with %d completed instances from checkpoints.", len(completed_ids))
-        sync_results_files(dataset, docs_by_instance, completed_eval_rows, args.results_file, args.output_file)
-
+    all_eval_results = []
+    all_top_docs = [[] for _ in dataset_records]
     if args.split == 'test':
         prefx = f"{args.dataset}" 
     else: 
@@ -219,18 +101,24 @@ def main():
     else:
         prefx += f'-{args.level}_'
 
-    instance_list = [i for i in os.listdir(args.dataset_dir) if i.startswith(prefx)]
-    if args.dataset == "loc-bench":
-        loc_bench_ids = [prefx + i for i in dataset['instance_id']]
-        instance_list = [i for i in instance_list if i in loc_bench_ids]
-        assert len(instance_list) == len(loc_bench_ids)
+    if args.dataset != "loc-bench":
+        instance_list = [i for i in os.listdir(args.dataset_dir) if i.startswith(prefx)]
+    if args.max_instances is not None:
+        instance_list = instance_list[:args.max_instances]
+        if args.dataset == "loc-bench":
+            dataset_records = dataset_records[:args.max_instances]
+            all_top_docs = all_top_docs[:args.max_instances]
+        logging.info(f"Limiting to {args.max_instances} instances")
+
+    if not instance_list:
+        raise ValueError(f"No BEIR instance directories found in {args.dataset_dir} with prefix {prefx}")
+
+    instance_index = {
+        item["instance_id"]: index
+        for index, item in enumerate(dataset_records)
+    }
 
     for ins_dir in tqdm(instance_list):
-        instance_id = instance_id_from_dir(ins_dir, prefx)
-        if instance_id in completed_ids:
-            logging.info("Skipping completed instance: %s", ins_dir)
-            continue
-
         logging.info("Instance Repo: {}".format(ins_dir))
         # load data and perform retrieval
         corpus, queries, qrels = GenericDataLoader(
@@ -259,12 +147,9 @@ def main():
         end_time = time()
         logging.info("Time taken to retrieve: {:.2f} seconds".format(end_time - start_time))
 
-        current_docs = {}
-        indices = [i for i,ex in enumerate(dataset) if ex["instance_id"] in queries]
-        for index in indices:
-            instance_id = dataset[index]["instance_id"]
-            current_docs[instance_id] = get_top_docs(results, corpus, instance_id)
-            docs_by_instance[instance_id] = current_docs[instance_id]
+        for instance_id in queries:
+            if instance_id in instance_index:
+                all_top_docs[instance_index[instance_id]] = get_top_docs(results, corpus, instance_id)
 
         logging.info("Retriever evaluation for k in: {}".format(retriever.k_values))
         ndcg, _map, recall, precision = retriever.evaluate(qrels, results, retriever.k_values)
@@ -276,17 +161,34 @@ def main():
             "time": end_time - start_time
         }
         logging.info(f"Instance #{ins_dir}: {eval_results}")
-        completed_eval_rows.append(eval_results)
-        for current_instance_id, docs in current_docs.items():
-            append_jsonl(results_sidecar, {"instance_id": current_instance_id, "docs": docs})
-            completed_ids.add(current_instance_id)
-        append_jsonl(eval_sidecar, eval_results)
-        sync_results_files(dataset, docs_by_instance, completed_eval_rows, args.results_file, args.output_file)
+        all_eval_results.append(eval_results)
 
-    if completed_eval_rows:
-        print("Average Eval Results: ", load_json(output_paths["eval_summary"]))
-    else:
-        print("No instances were processed.")
+    with open(args.results_file, "w", encoding="utf-8") as f:
+        for item, docs in zip(dataset_records, all_top_docs):
+            output_item = dict(item)
+            output_item["docs"] = docs
+            f.write(json.dumps(output_item, ensure_ascii=False) + "\n")
+
+    avg_eval_results = {}
+    for k,v_dict in all_eval_results[0].items():
+        if isinstance(v_dict, dict):
+            avg_v_dict = {}
+            for vk,vv in v_dict.items():
+                avg_vv = sum([e[k][vk] for e in all_eval_results])/len(all_eval_results)
+                avg_v_dict[vk] = avg_vv
+            avg_eval_results.update(avg_v_dict)
+        elif isinstance(v_dict, float):
+            avg_v = sum([e[k] for e in all_eval_results])/len(all_eval_results)
+            avg_eval_results[k] = avg_v
+        else:
+            raise ValueError
+        
+    print("Average Eval Results: ", avg_eval_results)
+    with open(args.output_file, "w") as f:
+        json.dump(avg_eval_results, f)
+
+    with open(args.output_file + "_all", "w") as f:
+        json.dump(all_eval_results, f)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -307,6 +209,7 @@ if __name__ == "__main__":
     parser.add_argument("--results_file", type=str, default="results.json",
                         help="Specify the filepath if you want to save the retrieval results.")
     parser.add_argument('--add_prefix', action='store_true', help="Add prefix to the queries")
+    parser.add_argument("--max_instances", type=int, default=None, help="Limit number of instances to evaluate")
     args = parser.parse_args()
 
     main()

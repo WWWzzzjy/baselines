@@ -2,9 +2,11 @@ import json
 import os
 import sys
 import pandas as pd
+import tiktoken
 
 from typing import Optional
 from torch import Tensor
+import numpy as np
 import torch
 from datasets import load_dataset
 import collections
@@ -14,6 +16,7 @@ from pathlib import Path
 from beir.datasets.data_loader import GenericDataLoader
 from datasets import load_dataset
 import copy
+from local_dataset_utils import instance_id_from_dir, list_local_instance_dirs
 
 def load_jsonl(filepath):
     """
@@ -35,6 +38,12 @@ def load_json(file_path, read_mode='r'):
             data.extend(json.loads("["+json_data+"]"))
         f.close()
         return data
+
+def load_single_json(file_path, read_mode='r'):
+    data = load_json(file_path, read_mode)
+    if isinstance(data, list) and len(data) == 1:
+        return data[0]
+    return data
 
 def get_sorted_documents_func(results, sorted_documents_per_query):
 
@@ -110,9 +119,13 @@ def recall_at_k(pred_target: Tensor, ideal_target: Tensor, k: Optional[int] = No
 
 
 def acc_at_k(pred_target: Tensor, ideal_target: Tensor, k: Optional[int] = None) -> Tensor:
-    pred_target = pred_target[:, :k] 
-    relevant = (pred_target == 1).sum(dim=-1)
-    return (relevant / k).mean(0)
+    pred_target_at_k = pred_target[:, :k]
+    ideal_target_at_k = ideal_target[:, :k]
+
+    relevant = (pred_target_at_k == 1).sum(dim=-1).float()
+    capped_total_relevant = (ideal_target_at_k == 1).sum(dim=-1).float()
+
+    return div_no_nan(relevant, capped_total_relevant).mean(0)
 
 
 def precision_at_k(pred_target: Tensor, ideal_target: Tensor, k: Optional[int] = None) -> Tensor:
@@ -140,6 +153,18 @@ def average_precision_at_k(pred_target: Tensor, ideal_target: Tensor, k: Optiona
         precisions.append(ap)
     
     return torch.tensor(precisions).mean()
+
+def f1_at_k(pred_target: Tensor, ideal_target: Tensor, k: Optional[int] = None) -> Tensor:
+    pred_target = pred_target[:, :k]
+    total_relevant = (ideal_target == 1).sum(dim=-1).float()
+
+    relevant_retrieved = (pred_target == 1).sum(dim=-1).float()
+
+    precision = div_no_nan(relevant_retrieved, torch.full_like(relevant_retrieved, k))
+    recall = div_no_nan(relevant_retrieved, total_relevant)
+
+    f1 = div_no_nan(2 * precision * recall, precision + recall)
+    return f1.mean(0)
 
 
 def load_gt_dict(gt_file, level):
@@ -193,14 +218,16 @@ METRIC_FUNC = {
     'recall': recall_at_k,
     'acc': acc_at_k,
     'precision': precision_at_k,
-    'map': average_precision_at_k
+    'map': average_precision_at_k,
+    'f1': f1_at_k,
 }
 METRIC_NAME = {
     'ndcg': 'NDCG',
     'recall': 'Recall',
     'acc': 'Acc',
     'precision': 'P',
-    'map': 'MAP'
+    'map': 'MAP',
+    'f1': 'F1',
 }
 
 
@@ -286,9 +313,9 @@ def cal_metrics_w_file(gt_file, loc_file, key,
 def eval_w_file(gt_file, loc_file, level2key_dict, selected_list=None, k_values_list=None):
     if not k_values_list:
         k_values_list = [
-            [1, 3, 5],
-            [5, 10],
-            [5, 10]
+            [5],
+            [5],
+            [5]
         ]
     file_res = cal_metrics_w_file(gt_file, loc_file, 
                             level2key_dict['file'], level='file', k_values=k_values_list[0],
@@ -307,18 +334,15 @@ def eval_w_file(gt_file, loc_file, level2key_dict, selected_list=None, k_values_
     return all_df
 
 
-def load_qrels(ds_name, split, dataset_dir):
+def load_qrels(ds_name, split, dataset_dir, selected_list=None):
     data_dir = dataset_dir
-    if split != 'test': 
-        prefix = f'{ds_name}-{split}'
-    else:
-        prefix = ds_name
-    instance_list = [i for i in os.listdir(f"{data_dir}/") if i.startswith(f"{prefix}-function_")]
-    if 'loc-bench' in ds_name: 
-        dataset = load_dataset("czlll/Loc-Bench_V1")[split]
-        filtered_ids = [f'{prefix}-function_{i}' for i in dataset['instance_id']] 
-        instance_list = [i for i in instance_list if i in filtered_ids]
-        assert len(instance_list) == len(filtered_ids)
+    instance_list = list_local_instance_dirs(data_dir, ds_name, split, "function")
+    if selected_list:
+        selected_ids = set(selected_list)
+        instance_list = [
+            ins_dir for ins_dir in instance_list
+            if instance_id_from_dir(ins_dir, ds_name, split, "function") in selected_ids
+        ]
     qrels = [GenericDataLoader(
                 data_folder=os.path.join(f"{data_dir}", ins_dir)
             ).load(split="test")[2] for ins_dir in instance_list]
@@ -333,6 +357,7 @@ def cal_metrics_w_dataset(loc_file, key,
                 selected_list=None,
                 qrels=None,
                 reranker_results=None,
+                num_runs=1,
                 ):
     assert key in ['found_files', 'found_modules', 'found_entities', 'docs']
     max_k = max(k_values)
@@ -437,11 +462,10 @@ def cal_metrics_w_dataset(loc_file, key,
     for instance_id in gt_dict.keys():
         if selected_list and instance_id not in selected_list: continue
         if not gt_dict[instance_id]: continue
+        if instance_id not in pred_dict: continue
+        if not pred_dict[instance_id]: continue
         
-        if instance_id not in pred_dict:
-            pred_locs = []
-        else:
-            pred_locs = pred_dict[instance_id][: max_k]
+        pred_locs = pred_dict[instance_id][: max_k]
                 
         gt_labels = [0 for _ in range(max_k)]
         pred_labels = [0 for _ in range(max_k)]
@@ -472,14 +496,44 @@ def cal_metrics_w_dataset(loc_file, key,
             
     return result
 
+def count_tokens_from_histories(histories: dict, tokenizer_model: str = "cl100k_base") -> dict:
+    if isinstance(histories, list) and len(histories) == 1:
+        histories = histories[0]
 
+    empty_stats = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0, "num_windows": 0}
+    if not isinstance(histories, dict):
+        return empty_stats
 
+    try:
+        encoding = tiktoken.get_encoding(tokenizer_model)
+    except:
+        encoding = tiktoken.get_encoding("cl100k_base")
+
+    input_tokens = 0
+    output_tokens = 0
+    num_windows = 0
+
+    for window_list in histories.get("run_history", []):
+        for entry in window_list:
+            for message in entry.get("prompt", []):
+                input_tokens += len(encoding.encode(message.get("content", "")))
+            output_tokens += len(encoding.encode(entry.get("response", "")))
+            num_windows += 1
+
+    return {
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": input_tokens + output_tokens,
+        "num_windows": num_windows,
+    }
 
 def evaluate_results(model='coderankembed_loc', output_dir="outputs",reranker_output_dir=None, dataset_dir="datasets",
                      dataset='czlll/SWE-bench_Lite', split='test', output_file=None,
                      selected_list=None,
-                     metrics=['acc'], 
-                     k_values_list=None):
+                     metrics=['acc', 'f1'], 
+                     k_values_list=[[5], [5], [5]],
+                     tokenizer_model="qwen3.6-flash",
+                     num_runs=3):
     if not k_values_list:
         if 'swe' in dataset:
             k_values_list = [
@@ -495,37 +549,129 @@ def evaluate_results(model='coderankembed_loc', output_dir="outputs",reranker_ou
             ]
     
     ds_name = dataset
- 
-    if 'czlll' not in dataset:
-        qrels = load_qrels(ds_name, split, dataset_dir)
-    else:
-        qrels = None
 
     if output_file:
         loc_file = Path(output_file)
     else:
         prefx = f'{output_dir}/model={model}_dataset={ds_name}_split={split}_level=function_evalmode=default'
         loc_file = Path(f'{prefx}_results.json')
-    
+
+    qrel_selected_list = selected_list
+    if qrel_selected_list is None and 'czlll' not in dataset and loc_file.exists():
+        qrel_selected_list = [
+            item["instance_id"]
+            for item in load_jsonl(loc_file)
+            if item.get("docs")
+        ]
+
+    if 'czlll' not in dataset:
+        qrels = load_qrels(ds_name, split, dataset_dir, selected_list=qrel_selected_list)
+    else:
+        qrels = None
+
+    reranker_results = None
+
+    if reranker_output_dir:
+        data_dir = dataset_dir
+        instance_list = list_local_instance_dirs(data_dir, ds_name, split, "function")
+        if qrel_selected_list:
+            selected_ids = set(qrel_selected_list)
+            instance_list = [
+                ins_dir for ins_dir in instance_list
+                if instance_id_from_dir(ins_dir, ds_name, split, "function") in selected_ids
+            ]
+
+    # 多轮 eval
+    if reranker_output_dir and num_runs > 1:
+        all_runs_results = []   # 每轮的指标
+        all_runs_tokens = []    # 每轮的 token 统计
+        all_runs_times  = []    # 每轮的推理时间
+
+        for run_idx in range(1, num_runs + 1):
+            run_reranker_dir = f"{reranker_output_dir}_run{run_idx}_{dataset}"
+            print(f"\n===== Evaluating Run {run_idx} =====")
+
+            # 读取该轮 reranker 结果
+            run_reranker_results = {}
+            run_token_stats = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0, "num_windows": 0}
+            run_time = 0.0
+
+            for ins_dir in instance_list:
+                rerank_file = os.path.join(run_reranker_dir, ins_dir, "rerank_100_llm_gen_num.json")
+                if not os.path.exists(rerank_file):
+                    continue
+                retrieved_results = load_single_json(rerank_file)
+                get_sorted_documents_func(retrieved_results, run_reranker_results)
+
+                # token 统计
+                histories_path = os.path.join(run_reranker_dir, ins_dir, "rerank_100_llm_gen_num_histories.json")
+                if os.path.exists(histories_path):
+                    stats = count_tokens_from_histories(load_single_json(histories_path), tokenizer_model)
+                    for k in run_token_stats:
+                        run_token_stats[k] += stats[k]
+
+                # 时间统计
+                time_path = os.path.join(run_reranker_dir, ins_dir, "time_metrics.json")
+                if os.path.exists(time_path):
+                    time_metrics = load_single_json(time_path)
+                    if isinstance(time_metrics, dict):
+                        run_time += time_metrics.get("inference_time_secs", 0.0)
+
+            # 计算该轮指标
+            run_file_res     = cal_metrics_w_dataset(loc_file, 'docs', 'file',     dataset, split, metrics=metrics, k_values=k_values_list[0], selected_list=selected_list, qrels=qrels, reranker_results=copy.deepcopy(run_reranker_results))
+            run_module_res   = cal_metrics_w_dataset(loc_file, 'docs', 'module',   dataset, split, metrics=metrics, k_values=k_values_list[1], selected_list=selected_list, qrels=qrels, reranker_results=copy.deepcopy(run_reranker_results))
+            run_function_res = cal_metrics_w_dataset(loc_file, 'docs', 'function', dataset, split, metrics=metrics, k_values=k_values_list[2], selected_list=selected_list, qrels=qrels, reranker_results=copy.deepcopy(run_reranker_results))
+
+            run_df = pd.concat([pd.DataFrame(r, index=[0]) for r in [run_file_res, run_module_res, run_function_res]],
+                               axis=1, keys=['file', 'module', 'function'])
+            print(run_df)
+            print(f"Tokens: input={run_token_stats['input_tokens']} output={run_token_stats['output_tokens']} total={run_token_stats['total_tokens']}")
+            print(f"Inference time: {run_time:.2f}s")
+
+            all_runs_results.append({
+                **{f"file/{k}": v for k, v in run_file_res.items()},
+                **{f"module/{k}": v for k, v in run_module_res.items()},
+                **{f"function/{k}": v for k, v in run_function_res.items()},
+            })
+            all_runs_tokens.append(run_token_stats)
+            all_runs_times.append(run_time)
+
+        # 汇总均值和标准差
+        print(f"\n===== Summary ({num_runs} runs) =====")
+        all_keys = list(all_runs_results[0].keys())
+        summary = {}
+        for k in all_keys:
+            vals = [r[k] for r in all_runs_results]
+            summary[k] = {"mean": round(float(np.mean(vals)), 4), "std": round(float(np.std(vals)), 4)}
+
+        summary_df = pd.DataFrame({k: f"{v['mean']} ± {v['std']}" for k, v in summary.items()}, index=[0])
+        print(summary_df)
+
+        print(f"\nToken mean: total={np.mean([t['total_tokens'] for t in all_runs_tokens]):.0f} ± {np.std([t['total_tokens'] for t in all_runs_tokens]):.0f}")
+        print(f"Time mean:  {np.mean(all_runs_times):.2f}s ± {np.std(all_runs_times):.2f}s")
+        return
+
     if reranker_output_dir:
         reranker_results = {}
-        reranker_output_dir = f"{reranker_output_dir}_{ds_name}"
-        data_dir = dataset_dir
-        if split != 'test': 
-            prefix = f'{ds_name}-{split}'
-        else:
-            prefix = ds_name
-        instance_list = [i for i in os.listdir(f"{data_dir}/") if i.startswith(f"{prefix}-function_")]
-        if 'loc-bench' in ds_name: 
-            loc_dataset = load_dataset("czlll/Loc-Bench_V1")[split]
-            filtered_ids = [f'{prefix}-function_{i}' for i in loc_dataset['instance_id']] 
-            instance_list = [i for i in instance_list if i in filtered_ids]
-            assert len(instance_list) == len(filtered_ids)
+        single_reranker_dir = f"{reranker_output_dir}_{ds_name}"
+        total_token_stats = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0, "num_windows": 0}
+
         for ins_dir in instance_list:
-            retrieved_results = load_json(os.path.join(reranker_output_dir, ins_dir, "rerank_100_llm_gen_num.json"))[0]
+            rerank_file = os.path.join(single_reranker_dir, ins_dir, "rerank_100_llm_gen_num.json")
+            if not os.path.exists(rerank_file):
+                continue
+
+            retrieved_results = load_single_json(rerank_file)
             get_sorted_documents_func(retrieved_results, reranker_results)
-    else:
-        reranker_results = None
+
+            histories_path = os.path.join(single_reranker_dir, ins_dir, "rerank_100_llm_gen_num_histories.json")
+            if os.path.exists(histories_path):
+                stats = count_tokens_from_histories(load_single_json(histories_path), tokenizer_model)
+                for k in total_token_stats:
+                    total_token_stats[k] += stats[k]
+
+        print(f"\n===== Token Statistics =====")
+        print(f"Avg tokens/instance: {total_token_stats['total_tokens'] // max(len(instance_list), 1)}")
 
     file_res = cal_metrics_w_dataset(loc_file, 'docs', 'file', dataset, split, 
                             metrics=metrics,

@@ -1,9 +1,18 @@
+import os
+
 from afl.util.preprocess_data import extract_structure
 from afl.util.utils import load_json
 
 
+PROJECT_FILE_LOC = os.environ.get("PROJECT_FILE_LOC", "./repo_structures")
+
+
+def load_repo_structure(instance_id: str):
+    return load_json(os.path.join(PROJECT_FILE_LOC, f"{instance_id}.json"))
+
+
 def get_functions_of_class(class_name: str, instance_id: str):
-    d = load_json(f"./repo_structures/{instance_id}.json")
+    d = load_repo_structure(instance_id)
     structure = d["structure"]
     files, classes, functions = extract_structure(structure)
 
@@ -17,7 +26,7 @@ def get_functions_of_class(class_name: str, instance_id: str):
 
 
 def get_functions_of_file(file_name: str, instance_id: str):
-    d = load_json(f"./repo_structures/{instance_id}.json")
+    d = load_repo_structure(instance_id)
     structure = d["structure"]
     files, classes, functions = extract_structure(structure)
     func_in_file = []
@@ -29,7 +38,7 @@ def get_functions_of_file(file_name: str, instance_id: str):
 
 
 def get_classes_of_file(file_name: str, instance_id: str):
-    d = load_json(f"./repo_structures/{instance_id}.json")
+    d = load_repo_structure(instance_id)
     structure = d["structure"]
     files, classes, functions = extract_structure(structure)
     classes_in_file = []
@@ -41,7 +50,7 @@ def get_classes_of_file(file_name: str, instance_id: str):
 
 
 def get_code_of_file(file_name: str, instance_id: str):
-    d = load_json(f"./repo_structures/{instance_id}.json")
+    d = load_repo_structure(instance_id)
     structure = d["structure"]
     files, classes, functions = extract_structure(structure)
     file_content = "You provide a wrong file name. Please try another file name again."
@@ -53,7 +62,7 @@ def get_code_of_file(file_name: str, instance_id: str):
 
 
 def get_code_of_class(file_name: str, class_name: str, instance_id: str):
-    d = load_json(f"./repo_structures/{instance_id}.json")
+    d = load_repo_structure(instance_id)
     structure = d["structure"]
     files, classes, functions = extract_structure(structure)
 
@@ -64,7 +73,7 @@ def get_code_of_class(file_name: str, class_name: str, instance_id: str):
 
 
 def get_code_of_class_function(file_name: str, class_name: str, func_name: str, instance_id: str):
-    d = load_json(f"./repo_structures/{instance_id}.json")
+    d = load_repo_structure(instance_id)
     structure = d["structure"]
     files, classes, functions = extract_structure(structure)
 
@@ -78,7 +87,7 @@ def get_code_of_class_function(file_name: str, class_name: str, func_name: str, 
 
 
 def get_code_of_file_function(file_name: str, func_name: str, instance_id: str):
-    d = load_json(f"./repo_structures/{instance_id}.json")
+    d = load_repo_structure(instance_id)
     structure = d["structure"]
     files, classes, functions = extract_structure(structure)
 
@@ -89,7 +98,7 @@ def get_code_of_file_function(file_name: str, func_name: str, instance_id: str):
     return "You provide a wrong file name or function name. Please try another file name again. It may be a class function."
 
 def get_all_of_files(instance_id: str):
-    d = load_json(f"./repo_structures/{instance_id}.json")
+    d = load_repo_structure(instance_id)
     structure = d["structure"]
     files, classes, functions = extract_structure(structure)
     file_names = set()
@@ -99,7 +108,7 @@ def get_all_of_files(instance_id: str):
     return list(file_names)
 
 def get_imports_of_file(file_name: str, instance_id: str):
-    d = load_json(f"./repo_structures/{instance_id}.json")
+    d = load_repo_structure(instance_id)
     structure = d["structure"]
     files, classes, functions = extract_structure(structure)
     imports = []
@@ -116,4 +125,3 @@ if __name__ == '__main__':
     # print(get_code_of_file_function('astropy/wcs/wcs.py', '_return_single_array', 'astropy__astropy-7746'))
     # print(get_all_of_files('get_all_of_files'))
     print(get_imports_of_file('sympy/matrices/expressions/blockmatrix.py', 'sympy__sympy-17630'))
-

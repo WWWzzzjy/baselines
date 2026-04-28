@@ -1,17 +1,33 @@
 import json
-import os  # 导入 os 模块，用于检查文件是否存在
-from datasets import load_from_disk
+import os
+
+from datasets import load_dataset, load_from_disk
+
 from get_repo_structure.get_repo_structure import get_project_structure_from_scratch
 
-# 加载数据集
+LOCAL_DATASET_DIR = "./datasets/SWE-bench_Lite_test"
+HF_DATASET_NAME = "princeton-nlp/SWE-bench_Lite"
+OUTPUT_DIR = "./repo_structures_lite"
+
+
+def load_lite_dataset():
+    if os.path.exists(LOCAL_DATASET_DIR):
+        print(f"从本地加载数据: {LOCAL_DATASET_DIR}")
+        return load_from_disk(LOCAL_DATASET_DIR)
+
+    print(f"本地数据不存在，从 Hugging Face 加载: {HF_DATASET_NAME}")
+    return load_dataset(HF_DATASET_NAME, split="test")
+
+
 print("加载数据")
-swe_bench_data = load_from_disk("./datasets/SWE-bench_Lite_test")
+swe_bench_data = load_lite_dataset()
+os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # 逐个处理数据集中的 bug 实例
 for bug in swe_bench_data:
     instance_id = bug['instance_id']
     # 构造 JSON 文件路径
-    json_file_path = f"./repo_structures_verified/{instance_id}.json"
+    json_file_path = os.path.join(OUTPUT_DIR, f"{instance_id}.json")
 
     # 检查文件是否已经存在，如果存在则跳过
     if os.path.exists(json_file_path):

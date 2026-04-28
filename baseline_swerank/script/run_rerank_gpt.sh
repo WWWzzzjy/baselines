@@ -7,7 +7,7 @@ export OUTPUT_DIR="${REPO_DIR}/outputs"
 export EVAL_DIR="${REPO_DIR}/eval_results"
 
 retriever=${1:-"SweRankEmbed-Small"}
-dataset=${2:-"swe-bench-verified"}
+dataset=${2:-"swe-bench-lite"}
 DATASET_DIR=${3:-"./datasets/"}
 split=${4:-"test"}
 level=${5:-"function"}

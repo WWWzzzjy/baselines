@@ -1,10 +1,8 @@
 accelerate==0.32.1
 beautifulsoup4==4.13.4
 beir==2.1.0
-# Linux-only training/inference dependencies.
-bitsandbytes==0.45.4; platform_system == "Linux" and python_version < "3.13"
+bitsandbytes==0.45.4
 chex==0.1.89
-datasets==3.6.0
 faiss_cpu==1.10.0
 fastcore==1.7.29
 fire==0.6.0
@@ -12,7 +10,8 @@ flax==0.10.6
 ftfy==6.3.1
 ghapi==1.0.6
 jax==0.6.0
-liger_kernel==0.5.9; platform_system == "Linux"
+liger_kernel==0.5.9
+litellm==1.52.1
 matplotlib==3.10.3
 openai==1.78.1
 optax==0.2.4
@@ -32,5 +31,5 @@ tqdm==4.66.4
 transformers==4.51.3
 ujson==5.10.0
 unidiff==0.7.5
-vllm==0.8.5.post1; platform_system == "Linux"
+vllm==0.8.5.post1
 wandb==0.19.11

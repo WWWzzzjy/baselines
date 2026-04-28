@@ -6,7 +6,7 @@ export OUTPUT_DIR="${REPO_DIR}/outputs"
 
 MODE=${1:-"reranker"} # code-retriever, reranker
 RETRIEVER_MODEL_NAME=${2:-"CodeRankEmbed"}
-DATASET=${3:-"swe-bench-verified"}
+DATASET=${3:-"swe-bench-lite"}
 
 # Model paths
 CodeRankLLM="nomic-ai/CodeRankLLM"

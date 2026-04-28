@@ -26,6 +26,10 @@ repo_to_top_folder = {
 }
 
 
+def get_top_folder(repo_name: str) -> str:
+    return repo_to_top_folder.get(repo_name, repo_name.split("/")[-1])
+
+
 def checkout_commit(repo_path, commit_id):
     """Checkout the specified commit in the given local git repository.
     :param repo_path: Path to the local git repository
@@ -69,7 +73,7 @@ def ensure_local_mirror(repo_name: str, mirror_root: str = MIRROR_ROOT):
     确保本地存在 repo 的裸镜像，若无则 --mirror 克隆，若已有可按需 update。
     返回镜像路径。
     """
-    top_folder = repo_to_top_folder[repo_name]
+    top_folder = get_top_folder(repo_name)
     mirror_path = os.path.join(mirror_root, f"{top_folder}.git")  # 裸仓库
 
     if not os.path.exists(mirror_path):
@@ -91,7 +95,7 @@ def clone_repo(repo_name, repo_playground, mirror_root: str = MIRROR_ROOT):
     """
     先确认本地镜像；随后用镜像快速派生工作副本。
     """
-    top_folder = repo_to_top_folder[repo_name]
+    top_folder = get_top_folder(repo_name)
     dest_path = os.path.join(repo_playground, top_folder)
 
     # 已存在工作副本则直接返回
@@ -125,13 +129,14 @@ def get_project_structure_from_scratch(
     # create playground
     os.makedirs(repo_playground)
 
+    top_folder = get_top_folder(repo_name)
+    repo_path = os.path.join(repo_playground, top_folder)
+
     clone_repo(repo_name, repo_playground)
-    checkout_commit(f"{repo_playground}/{repo_to_top_folder[repo_name]}", commit_id)
-    structure = create_structure(f"{repo_playground}/{repo_to_top_folder[repo_name]}")
+    checkout_commit(repo_path, commit_id)
+    structure = create_structure(repo_path)
     # clean up
-    subprocess.run(
-        ["rm", "-rf", f"{repo_playground}/{repo_to_top_folder[repo_name]}"], check=True
-    )
+    subprocess.run(["rm", "-rf", repo_path], check=True)
     d = {
         "repo": repo_name,
         "base_commit": commit_id,
@@ -153,13 +158,14 @@ def get_dependency_of_repo(
     # create playground
     os.makedirs(repo_playground)
 
+    top_folder = get_top_folder(repo_name)
+    repo_path = os.path.join(repo_playground, top_folder)
+
     clone_repo(repo_name, repo_playground)
-    checkout_commit(f"{repo_playground}/{repo_to_top_folder[repo_name]}", commit_id)
-    parse_dependency(f"{repo_playground}/{repo_to_top_folder[repo_name]}", instance_id, folder)
+    checkout_commit(repo_path, commit_id)
+    parse_dependency(repo_path, instance_id, folder)
     # clean up
-    subprocess.run(
-        ["rm", "-rf", f"{repo_playground}/{repo_to_top_folder[repo_name]}"], check=True
-    )
+    subprocess.run(["rm", "-rf", repo_path], check=True)
 
 def parse_dependency(directory_path, instance_id, folder):
     subprocess.run(

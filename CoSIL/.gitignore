@@ -8,6 +8,10 @@ datasets/
 mirror_cache/
 playground/
 repo_structures/
+repo_structure_lite/
+repo_structure_lite.zip
+repo_structures_lite/
+repo_structures_lite.zip
 results/
 
 *.log

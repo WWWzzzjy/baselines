@@ -1,7 +1,9 @@
 import json
+import os
 import time
 import random
 import openai
+import litellm
 import tiktoken
 import unicodedata
 from tqdm import tqdm
@@ -32,10 +34,9 @@ class SafeOpenai(RankLLM):
         api_type: str = None,
         api_base: str = None,
         api_version: str = None,
-        temperature: float = 0.0,
-        top_p: float = 1.0,
-        max_tokens: Optional[int] = None,
-        request_timeout: float = 30.0,
+        temperature: float = 0.6,
+        top_p: float = 0.95,
+        max_tokens: int = 32768,
     ) -> None:
         """
         Creates instance of the SafeOpenai class, a specialized version of RankLLM designed for safely handling OpenAI API calls with
@@ -85,44 +86,23 @@ class SafeOpenai(RankLLM):
         self._curr_cost = 0
         self._temperature = temperature
         self._top_p = top_p
-        self._max_tokens = max_tokens
-        self._request_timeout = request_timeout
+        self._completion_max_tokens = max_tokens
 
         self._keys = keys
         self._cur_key_id = key_start_id or 0
         self._cur_key_id = self._cur_key_id % len(self._keys)
         if proxy:
             openai.proxy = proxy
+
+        os.environ["OPENAI_API_KEY"] = self._keys[self._cur_key_id]
+        if api_base:
+            os.environ["OPENAI_API_BASE"] = api_base
+
         self.use_azure_ai = False
-        self._api_type = api_type
-        self._api_base = api_base
-        self._api_version = api_version
-
-        if all([api_type, api_base, api_version]):
-            # See https://learn.microsoft.com/en-US/azure/ai-services/openai/reference for list of supported versions
-            self.use_azure_ai = True
-
-        self._client = self._build_client()
-
-    def _build_client(self):
-        client_kwargs = {
-            "api_key": self._keys[self._cur_key_id],
-            "timeout": self._request_timeout,
-        }
-        if self.use_azure_ai:
-            return openai.AzureOpenAI(
-                azure_endpoint=self._api_base,
-                api_key=self._keys[self._cur_key_id],
-                api_version=self._api_version,
-                timeout=self._request_timeout,
-            )
-        if self._api_base:
-            client_kwargs["base_url"] = self._api_base
-        return openai.OpenAI(**client_kwargs)
-
-    def _rotate_key(self):
-        self._cur_key_id = (self._cur_key_id + 1) % len(self._keys)
-        self._client = self._build_client()
+        self._client = openai.OpenAI(
+            api_key=self._keys[self._cur_key_id],
+            base_url=api_base if api_base else "https://api.openai.com/v1",
+        )
 
     class CompletionMode(Enum):
         UNSPECIFIED = 0
@@ -137,60 +117,62 @@ class SafeOpenai(RankLLM):
         reduce_length=False,
         **kwargs,
     ) -> Union[str, Dict[str, Any]]:
-        cost = 0
-        start_time = time.perf_counter()
+        cost=0
         while True:
             try:
                 if completion_mode == self.CompletionMode.CHAT:
-                    completion = self._client.chat.completions.create(*args, **kwargs)
+                    if self._model.startswith("openai/"):
+                        completion = litellm.completion(*args, **kwargs, timeout=120)
+                    else:
+                        completion = self._client.chat.completions.create(*args, **kwargs, timeout=30)
+
                 elif completion_mode == self.CompletionMode.TEXT:
-                    completion = self._client.completions.create(*args, **kwargs)
+                    completion = openai.Completion.create(*args, **kwargs)
                 else:
                     raise ValueError(
                         "Unsupported completion mode: %V" % completion_mode
                     )
                 usage = getattr(completion, "usage", None)
-                prompt_tokens = getattr(usage, "prompt_tokens", 0) or 0
-                completion_tokens = getattr(usage, "completion_tokens", 0) or 0
-                cost = (
-                    self.cost_per_1k_token(input_token=True) * prompt_tokens
-                    + self.cost_per_1k_token(input_token=False) * completion_tokens
-                ) / 1000
+                prompt_tokens = getattr(usage, "prompt_tokens", 0) if usage else 0
+                completion_tokens = getattr(usage, "completion_tokens", 0) if usage else 0
+                cost = (self.cost_per_1k_token(input_token=True)*prompt_tokens + self.cost_per_1k_token(input_token=False)*completion_tokens)/1000
                 break
             except Exception as e:
                 print("Error in completion call")
                 print(str(e))
                 if "This model's maximum context length is" in str(e):
                     print("reduce_length")
-                    return "ERROR::reduce_length", 0, None, time.perf_counter() - start_time
+                    return "ERROR::reduce_length"
                 if "The response was filtered" in str(e):
                     print("The response was filtered")
-                    return "ERROR::The response was filtered", 0, None, time.perf_counter() - start_time
-                self._rotate_key()
+                    return "ERROR::The response was filtered"
+                self._cur_key_id = (self._cur_key_id + 1) % len(self._keys)
+                os.environ["OPENAI_API_KEY"] = self._keys[self._cur_key_id]
+                self._client = openai.OpenAI(
+                    api_key=self._keys[self._cur_key_id],
+                    base_url=self._client.base_url,
+                )
                 time.sleep(0.1)
-        latency_seconds = time.perf_counter() - start_time
         if return_text:
             completion = (
                 completion.choices[0].message.content
                 if completion_mode == self.CompletionMode.CHAT
                 else completion.choices[0].text
             )
-        return completion, cost, usage, latency_seconds
+        return completion, cost
 
     def run_llm(
         self, prompt: str, current_window_size: Optional[int] = None, use_logits: bool = False, use_alpha: bool = False
     ) -> Tuple[str, int]:
         model_key = "model"
         if self._model == "o4-mini":
-            response, cost, usage, latency_seconds = self._call_completion(
+            response, cost = self._call_completion(
                 messages=prompt,
                 completion_mode=SafeOpenai.CompletionMode.CHAT,
                 return_text=True,
                 **{
                     model_key: self._model,
-                    "reasoning_effort": "low",
-                    "top_p": self._top_p,
-                },
+                    "reasoning_effort": "low"},
             )
             self._acc_cost += cost
             self._curr_cost += cost
@@ -203,29 +185,26 @@ class SafeOpenai(RankLLM):
             self._history.append({
                 "prompt": prompt,
                 "response": response,
-                "usage": {
-                    "prompt_tokens": getattr(usage, "prompt_tokens", 0) or 0,
-                    "completion_tokens": getattr(usage, "completion_tokens", 0) or 0,
-                    "total_tokens": getattr(usage, "total_tokens", 0) or 0,
-                },
-                "latency_seconds": latency_seconds,
-                "cost": cost,
             })
             return response, len(encoding.encode(response))
         else:
-            request_kwargs = {
+            generation_kwargs = {
                 model_key: self._model,
                 "temperature": self._temperature,
-                "top_p": self._top_p,
             }
-            if self._max_tokens is not None:
-                request_kwargs["max_tokens"] = self._max_tokens
+            if self._top_p is not None:
+                generation_kwargs["top_p"] = self._top_p
+            if self._completion_max_tokens is not None:
+                generation_kwargs["max_tokens"] = self._completion_max_tokens
 
-            response, cost, usage, latency_seconds = self._call_completion(
+            response, cost = self._call_completion(
                 messages=prompt,
+                temperature=self._temperature,
+                top_p=self._top_p,
+                max_tokens=self._completion_max_tokens,
                 completion_mode=SafeOpenai.CompletionMode.CHAT,
                 return_text=True,
-                **request_kwargs,
+                **{model_key: self._model},
             )
             self._acc_cost += cost
             self._curr_cost += cost
@@ -238,13 +217,6 @@ class SafeOpenai(RankLLM):
             self._history.append({
                 "prompt": prompt,
                 "response": response,
-                "usage": {
-                    "prompt_tokens": getattr(usage, "prompt_tokens", 0) or 0,
-                    "completion_tokens": getattr(usage, "completion_tokens", 0) or 0,
-                    "total_tokens": getattr(usage, "total_tokens", 0) or 0,
-                },
-                "latency_seconds": latency_seconds,
-                "cost": cost,
             })
             return response, len(encoding.encode(response))
 

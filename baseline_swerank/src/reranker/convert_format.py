@@ -5,7 +5,6 @@ import os
 import json
 from collections import defaultdict
 from .utils.result import Result, ResultsWriter
-from datasets import load_dataset
 
 def read_jsonl(filepath):
     data = []
@@ -30,15 +29,10 @@ def convert_results_single_pass(prefix, output_path, data_dir, data_type, retrie
     print("Converting data for reranking run...")
     converted_cnts = 0
 
-    if 'loc-bench' in prefix:
-        loc_bench_dataset = load_dataset("czlll/Loc-Bench_V1")['test']
-        valid_datsets = [item['instance_id'] for item in loc_bench_dataset]
-
     for item in retrieval_results:
         qid = item['instance_id']
         docs = item['docs']
-
-        if 'loc-bench' in prefix and qid not in valid_datsets:
+        if not docs:
             continue
 
         dataset_name = f"{prefix}-function_{qid}"
