@@ -189,9 +189,8 @@ def main() -> None:
                 json.dump(inference_stats, f, indent=4)
             dump_jsonl(messages_path, message_records)
             print(
-                "  tokens/time: "
-                f"in={inference_stats.get('in_tokens', 0)}, "
-                f"out={inference_stats.get('out_tokens', 0)}, "
+                "  message tokens/time: "
+                f"tokens={inference_stats.get('message_total_tokens', 0)}, "
                 f"wall={inference_stats.get('wall_time_s', 0):.2f}s"
             )
         except Exception:

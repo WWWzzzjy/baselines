@@ -119,6 +119,12 @@ def get_llm(**kwargs) -> LLM:
         api_base = orcar_config["OPENAI_API_BASE_URL"]
         if api_base:
             kwargs["api_base"] = api_base
+        if model.startswith("qwen"):
+            additional_kwargs = dict(kwargs.get("additional_kwargs") or {})
+            extra_body = dict(additional_kwargs.get("extra_body") or {})
+            extra_body.setdefault("enable_thinking", False)
+            additional_kwargs["extra_body"] = extra_body
+            kwargs["additional_kwargs"] = additional_kwargs
         LLM_func = OpenAI if model.startswith("gpt") else OpenAICompatible
     else:
         raise ValueError(f"Unsupported model: {model}")

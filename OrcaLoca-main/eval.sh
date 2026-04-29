@@ -109,9 +109,7 @@ percentage_keys = [
     ("json_not_gen_rate", "Json Not Gen"),
 ]
 numeric_keys = [
-    ("mean_total_tokens", "Total Tokens"),
-    ("mean_input_tokens", "Input Tokens"),
-    ("mean_output_tokens", "Output Tokens"),
+    ("mean_message_total_tokens", "Message Total Tokens"),
     ("mean_wall_time_s", "Wall Time (s)"),
 ]
 

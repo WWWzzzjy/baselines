@@ -119,7 +119,7 @@ class CodeScorer:
 
         ret: List[int] = []
         for chat_input, (response, cnt) in zip(chat_inputs, results):
-            logger.info(cnt)
+            logger.debug(cnt)
             self._token_cnts.append(cnt)
             self._call_records.append(
                 {

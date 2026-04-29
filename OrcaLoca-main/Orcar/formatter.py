@@ -65,6 +65,51 @@ def serialize_chat_messages(messages: List[ChatMessage]) -> List[dict]:
     return [serialize_chat_message(message) for message in messages]
 
 
+def normalize_chat_message_for_token_count(message: ChatMessage | dict) -> dict:
+    """Normalize a chat message to the role/content shape used for token stats."""
+    if isinstance(message, ChatMessage):
+        message = serialize_chat_message(message)
+
+    role = message.get("role", "")
+    if hasattr(role, "value"):
+        role = role.value
+    content = message.get("content", "")
+    if content is None:
+        content = ""
+    elif not isinstance(content, str):
+        content = json.dumps(content, ensure_ascii=False, default=str)
+    return {"role": str(role), "content": content}
+
+
+def build_unique_message_sequence(call_records: Sequence[dict]) -> List[dict]:
+    """Build a de-duplicated message sequence from recorded LLM calls.
+
+    Each recorded call stores the full prompt, which includes prior context.
+    This helper keeps each exact role/content message once, preserving first-seen
+    order, and appends each assistant response once.
+    """
+    messages: List[dict] = []
+    seen: set[str] = set()
+
+    def append_once(message: ChatMessage | dict) -> None:
+        normalized = normalize_chat_message_for_token_count(message)
+        key = json.dumps(normalized, ensure_ascii=False, sort_keys=True)
+        if key in seen:
+            return
+        seen.add(key)
+        messages.append(normalized)
+
+    for record in call_records:
+        for message in record.get("messages", []) or []:
+            append_once(message)
+        if "response" in record and record["response"] is not None:
+            append_once(
+                {"role": MessageRole.ASSISTANT.value, "content": record["response"]}
+            )
+
+    return messages
+
+
 def get_react_tool_descriptions(tools: Sequence[BaseTool]) -> List[str]:
     """Tool."""
     tool_descs = []
@@ -180,6 +225,24 @@ class TokenCounter:
         if self.encoding is None:
             return 0
         return len(self.encoding.encode(string))
+
+    def count_messages(self, messages: Sequence[ChatMessage | dict]) -> int:
+        serialized = [
+            normalize_chat_message_for_token_count(message) for message in messages
+        ]
+        return self.count(json.dumps(serialized, ensure_ascii=False))
+
+    def count_messages_by_role(
+        self, messages: Sequence[ChatMessage | dict]
+    ) -> dict[str, int]:
+        role_tokens: dict[str, int] = {}
+        for message in messages:
+            serialized = normalize_chat_message_for_token_count(message)
+            role = serialized["role"]
+            role_tokens[role] = role_tokens.get(role, 0) + self.count(
+                json.dumps(serialized, ensure_ascii=False)
+            )
+        return role_tokens
 
     def count_chat(
         self, messages: List[ChatMessage], llm: LLM

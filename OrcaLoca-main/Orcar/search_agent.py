@@ -41,6 +41,7 @@ from .formatter import (
     SearchChatFormatter,
     TokenCount,
     TokenCounter,
+    build_unique_message_sequence,
     get_response_token_count,
     serialize_chat_messages,
 )
@@ -1319,7 +1320,7 @@ class SearchWorker(BaseAgentWorker):
                 in_token_cnt=in_token_cnt, out_token_cnt=out_token_cnt
             )
             token_source = "local_tokenizer"
-        logger.info(token_cnt)
+        logger.debug(token_cnt)
         if task.extra_state["is_done"]:
             stage = "Conclusion step"
             task.extra_state["token_cnts"].append((stage, token_cnt))
@@ -1464,42 +1465,24 @@ class SearchWorker(BaseAgentWorker):
         # reset new memory
         task.extra_state["new_memory"].reset()
 
-        token_cnts: List[Tuple[str, TokenCount]] = task.extra_state["token_cnts"]
-        in_token_cnt = 0
-        out_token_cnt = 0
-        breakdown = []
-        for tag, token_cnt in token_cnts:
-            in_token_cnt += token_cnt.in_token_cnt
-            out_token_cnt += token_cnt.out_token_cnt
-            breakdown.append(
-                {
-                    "stage": tag,
-                    "in_tokens": token_cnt.in_token_cnt,
-                    "out_tokens": token_cnt.out_token_cnt,
-                    "total_tokens": token_cnt.in_token_cnt + token_cnt.out_token_cnt,
-                }
-            )
-            logger.info(
-                (
-                    f"{tag:<25}: "
-                    f"in {token_cnt.in_token_cnt:>6} tokens, "
-                    f"out {token_cnt.out_token_cnt:>6} tokens"
-                )
-            )
+        self.last_message_records = task.extra_state["message_records"]
+        message_sequence = build_unique_message_sequence(self.last_message_records)
+        message_total_tokens = self._token_counter.count_messages(message_sequence)
+        message_role_tokens = self._token_counter.count_messages_by_role(
+            message_sequence
+        )
         logger.info(
             (
-                f"{'Total cnt':<25}: "
-                f"in {in_token_cnt:>6} tokens, "
-                f"out {out_token_cnt:>6} tokens"
+                f"{'Message list cnt':<25}: "
+                f"{message_total_tokens:>6} tokens, "
+                f"{len(message_sequence):>4} messages"
             )
         )
-        self.last_message_records = task.extra_state["message_records"]
         self.last_inference_stats = {
-            "in_tokens": in_token_cnt,
-            "out_tokens": out_token_cnt,
-            "total_tokens": in_token_cnt + out_token_cnt,
+            "message_total_tokens": message_total_tokens,
+            "message_count": len(message_sequence),
+            "message_role_tokens": message_role_tokens,
             "llm_calls": len(self.last_message_records),
-            "breakdown": breakdown,
         }
 
     def set_callback_manager(self, callback_manager: CallbackManager) -> None:

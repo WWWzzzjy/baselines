@@ -4,9 +4,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT_DIR"
 
-MODEL="${MODEL:-qwen3.5-flash-2026-02-23}"
+MODEL="${MODEL:-qwen3-8b}"
 DATASET="${DATASET:-princeton-nlp/SWE-bench_Lite}"  # "czlll/Loc-Bench_V1" / "princeton-nlp/SWE-bench_Lite"
-”
 SPLIT="${SPLIT:-test}"
 CFG_PATH="${CFG_PATH:-./key.cfg}"
 RUN_ALL="${RUN_ALL:-0}" # 1:跑全部

@@ -367,14 +367,11 @@ def parse_output(ds_golden: pd.DataFrame, args) -> None:
     if inference_stats_list:
         metrics.update(
             {
-                "mean_total_tokens": safe_mean(
-                    [x.get("total_tokens", 0) for x in inference_stats_list]
-                ),
-                "mean_input_tokens": safe_mean(
-                    [x.get("in_tokens", 0) for x in inference_stats_list]
-                ),
-                "mean_output_tokens": safe_mean(
-                    [x.get("out_tokens", 0) for x in inference_stats_list]
+                "mean_message_total_tokens": safe_mean(
+                    [
+                        x.get("message_total_tokens", x.get("total_tokens", 0))
+                        for x in inference_stats_list
+                    ]
                 ),
                 "mean_wall_time_s": safe_mean(
                     [x.get("wall_time_s", 0) for x in inference_stats_list]
@@ -419,13 +416,7 @@ def parse_output(ds_golden: pd.DataFrame, args) -> None:
     )
     if inference_stats_list:
         print(
-            f"Mean Total Tokens: {metrics['mean_total_tokens']:.2f}"
-        )
-        print(
-            f"Mean Input Tokens: {metrics['mean_input_tokens']:.2f}"
-        )
-        print(
-            f"Mean Output Tokens: {metrics['mean_output_tokens']:.2f}"
+            f"Mean Message Total Tokens: {metrics['mean_message_total_tokens']:.2f}"
         )
         print(
             f"Mean Wall Time: {metrics['mean_wall_time_s']:.2f}s"
