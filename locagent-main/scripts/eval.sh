@@ -5,6 +5,8 @@ set -e
 
 WORKSPACE="/Users/Zhuanz/Documents/pyproject/LocAgent"
 N_RUNS=3
+DATASET="czlll/SWE-bench_Lite"
+SPLIT="test"
 
 cd "${WORKSPACE}"
 python - <<EOF
@@ -41,6 +43,8 @@ for i, (loc_file, traj_file) in enumerate(zip(loc_files, traj_files), 1):
             [5],   # module level
             [5],   # function level
         ],
+        dataset='$DATASET',
+        split='$SPLIT',
     )
     print(res)
     all_results.append(res)
