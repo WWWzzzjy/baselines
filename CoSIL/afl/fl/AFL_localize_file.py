@@ -36,9 +36,13 @@ def localize_instance(
         logger.info(f"Skipping existing instance_id: {bug['instance_id']}")
         return
 
-    structure = get_repo_structure(
-        instance_id, bug["repo"], bug["base_commit"], "playground"
-    )
+    try:
+        structure = get_repo_structure(
+            instance_id, bug["repo"], bug["base_commit"], "playground"
+        )
+    except FileNotFoundError:
+        logger.warning(f"Skipping {instance_id}: repo structure file not found")
+        return
 
     logger.info(f"================ localize {instance_id} ================")
 
