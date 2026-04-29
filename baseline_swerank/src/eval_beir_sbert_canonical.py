@@ -30,6 +30,12 @@ if not hasattr(DynamicCache, 'from_legacy_cache'):
                 cache.update(key_states, value_states, layer_idx)
         return cache
     DynamicCache.from_legacy_cache = _from_legacy_cache
+
+# DynamicCache.get_usable_length was removed in newer transformers; patch it back
+if not hasattr(DynamicCache, 'get_usable_length'):
+    def _get_usable_length(self, new_seq_length, layer_idx=0):
+        return self.get_seq_length(layer_idx)
+    DynamicCache.get_usable_length = _get_usable_length
 import csv
 from sentence_transformers import SentenceTransformer
 from collections import defaultdict
