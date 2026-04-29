@@ -191,7 +191,7 @@ def main():
     if args.num_runs <= 0:
         raise ValueError("--num_runs must be a positive integer")
 
-    if args.dataset.startswith("swe-bench"):
+    if args.dataset.startswith("swe-bench") or args.dataset.startswith("loc-bench"):
         if args.dataset.startswith("swe-bench"):
             if 'lite' in args.dataset.lower():
                 swebench = load_dataset("princeton-nlp/SWE-bench_Lite")[args.split]
@@ -199,16 +199,16 @@ def main():
                 swebench = load_dataset("princeton-nlp/SWE-bench_Verified")[args.split]
             else:
                 swebench = load_dataset("princeton-nlp/SWE-bench")[args.split]
-            if args.split == 'test':
-                prefx = f"{args.dataset}" 
-            else: 
-                prefx = f"{args.dataset}-{args.split}"
-            if args.level == 'file':
-                prefx += '_'
-            else:
-                prefx += f'-{args.level}_'
+        elif args.dataset.startswith("loc-bench"):
+            swebench = load_dataset("czlll/Loc-Bench_V1")[args.split]
+        if args.split == 'test':
+            prefx = f"{args.dataset}"
         else:
-            raise ValueError(f"`dataset` should starts with either 'swe-bench'.")
+            prefx = f"{args.dataset}-{args.split}"
+        if args.level == 'file':
+            prefx += '_'
+        else:
+            prefx += f'-{args.level}_'
         
         instance_list = sorted([i for i in os.listdir(args.dataset_dir) if i.startswith(prefx)])
         if len(instance_list) == 0:
@@ -265,14 +265,11 @@ def main():
                 end_time = time()
 
                 # get topk retrieved docs
-                if args.dataset.startswith("swe-bench"):
+                if args.dataset.startswith("swe-bench") or args.dataset.startswith("loc-bench"):
                     indices = [i for i,ex in enumerate(swebench) if ex["instance_id"] in queries]
                     for index in indices:
                         instance_id = swebench[index]["instance_id"]
                         all_top_docs[index] = get_top_docs(results, corpus, instance_id)
-                
-                else:
-                    raise ValueError(f"`dataset` should starts with either 'swe-bench'.")
 
                 # evaluate retrieval results
                 if len(qrels) == 0:
@@ -336,7 +333,7 @@ def main():
             all_runs_eval_results.append({"run": run_idx, "instances": all_eval_results, "average": avg_eval_results})
             final_top_docs = all_top_docs
 
-        if args.dataset.startswith("swe-bench"):
+        if args.dataset.startswith("swe-bench") or args.dataset.startswith("loc-bench"):
             swebench = swebench.add_column("docs", final_top_docs)
             swebench.to_json(args.results_file)
 
@@ -346,9 +343,9 @@ def main():
             json.dump({"runs": run_results, "summary": summary}, f, indent=2)
         with open(args.output_file + "_all", "w") as f:
             json.dump(all_runs_eval_results, f, indent=2)
-        
+
     else:
-        raise ValueError(f"`dataset` should starts with either 'swe-bench'.")
+        raise ValueError(f"`dataset` should start with either 'swe-bench' or 'loc-bench'.")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
