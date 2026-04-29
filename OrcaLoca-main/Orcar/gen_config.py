@@ -16,9 +16,9 @@ def get_qwen_tokenizer_name(model: str) -> str:
     explicit = os.environ.get("QWEN_TOKENIZER_MODEL")
     if explicit:
         return explicit
-    if model.startswith("qwen3") or model.startswith("qwen3.5"):
+    if model.lower().startswith("qwen3") or model.lower().startswith("qwen3.5"):
         return "Qwen/Qwen3-8B"
-    if model.startswith("qwen2.5"):
+    if model.lower().startswith("qwen2.5"):
         return "Qwen/Qwen2.5-7B-Instruct"
     return "Qwen/Qwen2.5-7B-Instruct"
 
