@@ -7,7 +7,7 @@ WORKSPACE="/Users/Zhuanz/Documents/pyproject/LocAgent"
 N_RUNS=3
 DATASET="czlll/SWE-bench_Lite"
 SPLIT="test"
-
+DATASET_NAME="swe_bench_lite"
 cd "${WORKSPACE}"
 python - <<EOF
 import sys
@@ -23,8 +23,8 @@ level2key_dict = {
     'function': 'found_entities',
 }
 
-loc_files = [f'${WORKSPACE}/outputs/run{i}/location/merged_loc_outputs_mrr.jsonl' for i in range(1, $N_RUNS + 1)]
-traj_files = [f'${WORKSPACE}/outputs/run{i}/location/loc_trajs.jsonl' for i in range(1, $N_RUNS + 1)]
+loc_files = [f'${WORKSPACE}/outputs/${DATASET_NAME}/run{i}/location/merged_loc_outputs_mrr.jsonl' for i in range(1, $N_RUNS + 1)]
+traj_files = [f'${WORKSPACE}/outputs/${DATASET_NAME}/run{i}/location/loc_trajs.jsonl' for i in range(1, $N_RUNS + 1)]
 
 all_results = []
 all_tokens = []
