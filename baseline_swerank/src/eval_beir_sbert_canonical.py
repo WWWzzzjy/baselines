@@ -13,10 +13,23 @@ from beir.retrieval.evaluation import EvaluateRetrieval
 from beir.retrieval.search.dense import DenseRetrievalExactSearch as DRES
 from tqdm import tqdm
 from transformers import AutoTokenizer, Qwen2Config
+from transformers.cache_utils import DynamicCache
 
 # rope_theta was added to Qwen2Config in transformers>=4.37.0; patch for older versions
 if not hasattr(Qwen2Config, 'rope_theta'):
     Qwen2Config.rope_theta = 10000.0
+
+# DynamicCache.from_legacy_cache was removed in newer transformers; patch it back
+if not hasattr(DynamicCache, 'from_legacy_cache'):
+    @classmethod
+    def _from_legacy_cache(cls, past_key_values=None):
+        cache = cls()
+        if past_key_values is not None:
+            for layer_idx in range(len(past_key_values)):
+                key_states, value_states = past_key_values[layer_idx]
+                cache.update(key_states, value_states, layer_idx)
+        return cache
+    DynamicCache.from_legacy_cache = _from_legacy_cache
 import csv
 from sentence_transformers import SentenceTransformer
 from collections import defaultdict
