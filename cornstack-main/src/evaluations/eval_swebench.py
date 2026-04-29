@@ -2,6 +2,7 @@ import os
 import json
 import logging
 import argparse
+import re
 from time import time
 from datasets import load_dataset
 from beir import util, LoggingHandler
@@ -17,6 +18,8 @@ import csv
 from sentence_transformers import SentenceTransformer
 from collections import defaultdict
 from statistics import mean, pstdev
+
+METRIC_KEYS = ["time", "Func Acc@5", "Func F1@5", "File Acc@5", "File F1@5"]
 
 #### Just some code to print debug information to stdout
 logging.basicConfig(format='%(asctime)s - %(message)s',
@@ -61,9 +64,41 @@ def save_beir_results_to_tsv_list(all_results, output_file):
             results_dct[k] = v 
     save_beir_results_to_tsv(results_dct, output_file) 
 
+def calculate_ranking_metrics(ranked_docs, positives, k=5):
+    if not positives:
+        return {"Acc@5": 0.0, "F1@5": 0.0}
+
+    top_docs = ranked_docs[:k]
+    hits = len(set(top_docs) & positives)
+
+    acc_denom = min(len(positives), k)
+    acc = min(hits, acc_denom) / acc_denom
+
+    precision = hits / len(top_docs) if top_docs else 0.0
+    recall = hits / len(positives)
+    f1 = 2 * precision * recall / (precision + recall) if precision + recall > 0 else 0.0
+
+    return {"Acc@5": acc, "F1@5": f1}
+
+def function_id_to_file_id(doc_id):
+    match = re.match(r"(.+\.py)(/.*)?", doc_id)
+    return match.group(1) if match else doc_id
+
+def dedupe_preserving_order(items):
+    seen = set()
+    deduped = []
+    for item in items:
+        if item in seen:
+            continue
+        seen.add(item)
+        deduped.append(item)
+    return deduped
+
 def evaluate_topk(results, qrels, k=5):
     acc_scores = []
     f1_scores = []
+    file_acc_scores = []
+    file_f1_scores = []
 
     for query_id, gt_docs in qrels.items():
         if query_id not in results:
@@ -74,28 +109,35 @@ def evaluate_topk(results, qrels, k=5):
             continue
 
         sorted_docs = sorted(results[query_id].items(), key=lambda item: item[1], reverse=True)
-        top_docs = [doc_id for doc_id, _ in sorted_docs[:k]]
-        hits = len(set(top_docs) & positives)
+        ranked_funcs = [doc_id for doc_id, _ in sorted_docs]
+        func_metrics = calculate_ranking_metrics(ranked_funcs, positives, k)
+        acc_scores.append(func_metrics["Acc@5"])
+        f1_scores.append(func_metrics["F1@5"])
 
-        acc_denom = min(len(positives), k)
-        acc_scores.append(min(hits, acc_denom) / acc_denom)
-
-        precision = hits / len(top_docs) if top_docs else 0.0
-        recall = hits / len(positives)
-        f1 = 2 * precision * recall / (precision + recall) if precision + recall > 0 else 0.0
-        f1_scores.append(f1)
+        positive_files = {function_id_to_file_id(doc_id) for doc_id in positives}
+        ranked_files = dedupe_preserving_order(function_id_to_file_id(doc_id) for doc_id in ranked_funcs)
+        file_metrics = calculate_ranking_metrics(ranked_files, positive_files, k)
+        file_acc_scores.append(file_metrics["Acc@5"])
+        file_f1_scores.append(file_metrics["F1@5"])
 
     if not acc_scores:
-        return {"Acc@5": 0.0, "F1@5": 0.0}
+        return {
+            "Func Acc@5": 0.0,
+            "Func F1@5": 0.0,
+            "File Acc@5": 0.0,
+            "File F1@5": 0.0,
+        }
 
     return {
-        "Acc@5": sum(acc_scores) / len(acc_scores),
-        "F1@5": sum(f1_scores) / len(f1_scores),
+        "Func Acc@5": sum(acc_scores) / len(acc_scores),
+        "Func F1@5": sum(f1_scores) / len(f1_scores),
+        "File Acc@5": sum(file_acc_scores) / len(file_acc_scores),
+        "File F1@5": sum(file_f1_scores) / len(file_f1_scores),
     }
 
 def format_metrics(title, metrics):
     metric_lines = [title]
-    for key in ["time", "Acc@5", "F1@5"]:
+    for key in METRIC_KEYS:
         value = metrics[key]
         if key == "time":
             metric_lines.append(f"  {key}: {value:.2f}s")
@@ -105,7 +147,7 @@ def format_metrics(title, metrics):
 
 def format_summary(title, summary):
     metric_lines = [title]
-    for key in ["time", "Acc@5", "F1@5"]:
+    for key in METRIC_KEYS:
         values = summary[key]
         if key == "time":
             metric_lines.append(f"  {key}: mean={values['mean']:.2f}s, std={values['std']:.2f}s")
@@ -119,7 +161,7 @@ def summarize_runs(run_results):
             "mean": mean(result[key] for result in run_results),
             "std": pstdev(result[key] for result in run_results),
         }
-        for key in ["time", "Acc@5", "F1@5"]
+        for key in METRIC_KEYS
     }
 
 def main():
@@ -286,7 +328,7 @@ def main():
                 "run": run_idx,
                 **{
                     key: sum(e[key] for e in all_eval_results) / len(all_eval_results)
-                    for key in ["time", "Acc@5", "F1@5"]
+                    for key in METRIC_KEYS
                 }
             }
             print(format_metrics(f"Run {run_idx} Average Results:", avg_eval_results))
