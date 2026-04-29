@@ -114,7 +114,7 @@ def get_llm(**kwargs) -> LLM:
         kwargs["project"] = credentials.project_id
         kwargs["credentials"] = credentials
         LLM_func = Vertex
-    elif model.lowe().startswith("gpt") or model.lower().startswith("qwen"):
+    elif model.lower().startswith("gpt") or model.lower().startswith("qwen"):
         kwargs["api_key"] = orcar_config["OPENAI_API_KEY"]
         api_base = orcar_config["OPENAI_API_BASE_URL"]
         if api_base:
