@@ -12,3 +12,6 @@ artifact/assets
 artifact/artifact
 # unignore a file
 !requirements.txt
+repo_cache_lite/
+repo_cache_v1/
+*.zip

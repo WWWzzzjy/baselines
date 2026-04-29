@@ -73,7 +73,7 @@ def get_llm(**kwargs) -> LLM:
     # key.cfg is in the parent directory of this file
     orcar_config: Config = kwargs.get("orcar_config", None)
     model = kwargs.get("model", None)
-    if model.startswith("claude"):
+    if model.lower().startswith("claude"):
         # first check if the provider has been set
         if orcar_config.provider == "vertexanthropic":
             print(f"Using AnthropicVertex model: {model}")
@@ -98,7 +98,7 @@ def get_llm(**kwargs) -> LLM:
         else:
             kwargs["api_key"] = orcar_config["ANTHROPIC_API_KEY"]
             LLM_func = Anthropic
-    elif model.startswith("gemini"):
+    elif model.lower().startswith("gemini"):
         # Load Google Cloud credentials
         service_account_path = orcar_config["VERTEX_SERVICE_ACCOUNT_PATH"]
 
@@ -114,18 +114,18 @@ def get_llm(**kwargs) -> LLM:
         kwargs["project"] = credentials.project_id
         kwargs["credentials"] = credentials
         LLM_func = Vertex
-    elif model.startswith("gpt") or model.startswith("qwen"):
+    elif model.lowe().startswith("gpt") or model.lower().startswith("qwen"):
         kwargs["api_key"] = orcar_config["OPENAI_API_KEY"]
         api_base = orcar_config["OPENAI_API_BASE_URL"]
         if api_base:
             kwargs["api_base"] = api_base
-        if model.startswith("qwen"):
+        if model.lower().startswith("qwen"):
             additional_kwargs = dict(kwargs.get("additional_kwargs") or {})
             extra_body = dict(additional_kwargs.get("extra_body") or {})
             extra_body.setdefault("enable_thinking", False)
             additional_kwargs["extra_body"] = extra_body
             kwargs["additional_kwargs"] = additional_kwargs
-        LLM_func = OpenAI if model.startswith("gpt") else OpenAICompatible
+        LLM_func = OpenAI if model.lower().startswith("gpt") else OpenAICompatible
     else:
         raise ValueError(f"Unsupported model: {model}")
 

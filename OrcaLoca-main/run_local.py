@@ -180,6 +180,7 @@ def main() -> None:
 
         try:
             repo_path = ensure_repo(inst, cache_dir)
+            # continue
             search_output, inference_stats, message_records = run_instance(
                 inst, llm, repo_path
             )
