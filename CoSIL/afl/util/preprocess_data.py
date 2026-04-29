@@ -599,12 +599,7 @@ def get_full_file_paths_and_classes_and_functions(structure, current_path=""):
     functions = []
     for name, content in structure.items():
         if isinstance(content, dict):
-            if (
-                not "functions" in content.keys()
-                and not "classes" in content.keys()
-                and not "text" in content.keys()
-            ) or not len(content.keys()) == 3:
-                # or guards against case where functions and classes are somehow part of the structure.
+            if "text" not in content:
                 next_path = f"{current_path}/{name}" if current_path else name
                 (
                     sub_files,
@@ -718,12 +713,7 @@ def extract_structure(structure, current_path=""):
     functions = []
     for name, content in structure.items():
         if isinstance(content, dict):
-            if (
-                not "functions" in content.keys()
-                and not "classes" in content.keys()
-                and not "text" in content.keys()
-            ) or not len(content.keys()) == 3:
-                # or guards against case where functions and classes are somehow part of the structure.
+            if "text" not in content:
                 next_path = f"{current_path}/{name}" if current_path else name
                 (
                     sub_files,
