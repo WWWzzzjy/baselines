@@ -44,6 +44,9 @@ def localize_instance(
 
     if PROJECT_FILE_LOC is not None:
         project_file = os.path.join(PROJECT_FILE_LOC, bug["instance_id"] + ".json")
+        if not os.path.exists(project_file):
+            logger.warning(f"Skipping {instance_id}: repo structure file not found")
+            return
         d = load_json(project_file)
     else:
         # we need to get the project structure directly
