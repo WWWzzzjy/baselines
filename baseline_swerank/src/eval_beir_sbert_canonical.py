@@ -12,7 +12,11 @@ from beir.datasets.data_loader import GenericDataLoader
 from beir.retrieval.evaluation import EvaluateRetrieval
 from beir.retrieval.search.dense import DenseRetrievalExactSearch as DRES
 from tqdm import tqdm
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, Qwen2Config
+
+# rope_theta was added to Qwen2Config in transformers>=4.37.0; patch for older versions
+if not hasattr(Qwen2Config, 'rope_theta'):
+    Qwen2Config.rope_theta = 10000.0
 import csv
 from sentence_transformers import SentenceTransformer
 from collections import defaultdict
