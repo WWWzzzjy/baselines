@@ -40,10 +40,14 @@ if not hasattr(DynamicCache, 'get_usable_length'):
 # DynamicCache.to_legacy_cache was removed in newer transformers; patch it back
 if not hasattr(DynamicCache, 'to_legacy_cache'):
     def _to_legacy_cache(self):
-        return tuple(
-            (self.key_cache[layer_idx], self.value_cache[layer_idx])
-            for layer_idx in range(len(self.key_cache))
-        )
+        # key_cache/value_cache may not exist in newer transformers internal structures;
+        # for encoding-only use the returned cache is discarded, so returning () is safe
+        if hasattr(self, 'key_cache') and len(self.key_cache) > 0:
+            return tuple(
+                (self.key_cache[i], self.value_cache[i])
+                for i in range(len(self.key_cache))
+            )
+        return ()
     DynamicCache.to_legacy_cache = _to_legacy_cache
 import csv
 from sentence_transformers import SentenceTransformer
