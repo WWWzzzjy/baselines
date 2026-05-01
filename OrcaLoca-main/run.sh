@@ -5,14 +5,15 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT_DIR"
 
 MODEL="${MODEL:-qwen3-8b}"
-DATASET="${DATASET:-czlll/Loc-Bench_V1}"  # "czlll/Loc-Bench_V1" / "princeton-nlp/SWE-bench_Lite"
+DATASET="${DATASET:-princeton-nlp/SWE-bench_Lite}"  # "czlll/Loc-Bench_V1" / "princeton-nlp/SWE-bench_Lite"
 SPLIT="${SPLIT:-test}"
+export OPENAI_API_KEY="sk-482fa2a1567041ecafa9c3114bf3811d"
 CFG_PATH="${CFG_PATH:-./key.cfg}"
-RUN_ALL="${RUN_ALL:-1}" # 1:跑全部
+RUN_ALL="${RUN_ALL:-0}" # 1:跑全部
 OPENAI_API_BASE_URL="${OPENAI_API_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}"
 OUTPUT_DIR="${OUTPUT_DIR:-./output_local}"
-CACHE_DIR="${CACHE_DIR:-./repo_cache_v1}"
-NUM_RUNS="${NUM_RUNS:-3}"
+CACHE_DIR="${CACHE_DIR:-./repo_cache_lite}"
+NUM_RUNS="${NUM_RUNS:-2}"
 
 INSTANCE_IDS=("$@")
 

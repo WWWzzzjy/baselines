@@ -15,3 +15,4 @@ artifact/artifact
 repo_cache_lite/
 repo_cache_v1/
 *.zip
+*.gz

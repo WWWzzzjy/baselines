@@ -40,21 +40,31 @@ def run_cmd(cmd: list[str], cwd: str | None = None) -> str:
 
 def reset_repo(repo_path: str, base_commit: str) -> None:
     run_cmd(["git", "reset", "--hard", base_commit], cwd=repo_path)
-    run_cmd(["git", "submodule", "update", "--init", "--recursive", "--force"], cwd=repo_path)
-    run_cmd(["git", "submodule", "deinit", "-f", "--all"], cwd=repo_path)
-    modules_dir = os.path.join(repo_path, ".git", "modules")
-    if os.path.isdir(modules_dir):
-        run_cmd(["rm", "-rf", modules_dir])
+    if os.path.exists(os.path.join(repo_path, ".gitmodules")):
+        run_cmd(["git", "submodule", "sync", "--recursive"], cwd=repo_path)
+        run_cmd(
+            [
+                "git",
+                "submodule",
+                "update",
+                "--init",
+                "--recursive",
+                "--force",
+                "--no-fetch",
+            ],
+            cwd=repo_path,
+        )
     run_cmd(["git", "diff", "--quiet"], cwd=repo_path)
 
 
-def ensure_repo(inst: dict[str, Any], cache_dir: str) -> str:
+def ensure_repo(inst: dict[str, Any], cache_dir: str) -> str | None:
     repo_name = inst["repo"]
     repo_path = os.path.join(cache_dir, get_repo_dir(repo_name))
     os.makedirs(cache_dir, exist_ok=True)
 
     if not os.path.isdir(repo_path):
-        run_cmd(["git", "clone", f"https://github.com/{repo_name}.git", repo_path])
+        print(f"  skip missing repo: {repo_name} ({repo_path})")
+        return None
 
     reset_repo(repo_path, inst["base_commit"])
     return repo_path
@@ -180,6 +190,8 @@ def main() -> None:
 
         try:
             repo_path = ensure_repo(inst, cache_dir)
+            if repo_path is None:
+                continue
             # continue
             search_output, inference_stats, message_records = run_instance(
                 inst, llm, repo_path
