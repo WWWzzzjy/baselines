@@ -36,6 +36,7 @@ MODEL_COST_PER_INPUT = {
     'azure/gpt-4o-mini': 1.65e-07,
     'hosted_vllm/Qwen/Qwen2.5-Coder-7B-Instruct': 0,
     'hosted_vllm/Qwen/Qwen2.5-Coder-32B-Instruct': 0,
+    'openai/claude-haiku-4-5-20251001': 8e-07,
 }
 
 # The cost per token for each model output.
@@ -71,6 +72,7 @@ MODEL_COST_PER_OUTPUT = {
     'azure/gpt-4o-mini': 6.6e-07,
     'hosted_vllm/Qwen/Qwen2.5-Coder-7B-Instruct': 0,
     'hosted_vllm/Qwen/Qwen2.5-Coder-32B-Instruct': 0,
+    'openai/claude-haiku-4-5-20251001': 4e-06,
 }
 
 def calc_cost(model_name, input_tokens, output_tokens):
