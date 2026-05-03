@@ -516,8 +516,8 @@ def count_tokens_from_histories(histories: dict, tokenizer_model: str = "cl100k_
     for window_list in histories.get("run_history", []):
         for entry in window_list:
             for message in entry.get("prompt", []):
-                input_tokens += len(encoding.encode(message.get("content", "")))
-            output_tokens += len(encoding.encode(entry.get("response", "")))
+                input_tokens += len(encoding.encode(message.get("content", ""), allowed_special="all"))
+            output_tokens += len(encoding.encode(entry.get("response", ""), allowed_special="all"))
             num_windows += 1
 
     return {

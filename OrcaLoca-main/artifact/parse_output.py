@@ -124,10 +124,14 @@ def top_k_scores(gt_set: set, model_ranked: List[str], k: int = TOP_K) -> tuple:
         return empty_score, empty_score
 
     hits = len(gt_set.intersection(model_top_k))
-    acc = hits / min(len(gt_set), k)
+    acc = hits / len(gt_set) if gt_set else 0.0
     precision = hits / len(model_top_k) if model_top_k else 0.0
     f1 = 0.0 if precision + acc == 0 else 2 * precision * acc / (precision + acc)
-    return acc, f1
+
+    # when model_top_k covers all gt_set, acc_k is 1, otherwise acc_k is 0, regardless of the size of gt_set. This is a more strict metric to reflect whether the model can cover all the golden locations in top K.
+    acc_k = 1.0 if gt_set.issubset(model_top_k) else 0.0
+
+    return acc_k, f1
 
 
 def add_missing_top_k_scores(
