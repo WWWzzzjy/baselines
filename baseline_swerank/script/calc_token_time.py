@@ -1,11 +1,11 @@
 import json
 import time
-import traceback
 from pathlib import Path
 from statistics import mean, pstdev
 
 
-ROOT = Path(__file__).resolve().parent
+SCRIPT_DIR = Path(__file__).resolve().parent
+ROOT = SCRIPT_DIR.parent / "results"
 OUT_JSON = ROOT / "qwen_token_per_instance_stats.json"
 TOKENIZER_NAME = "Qwen/Qwen3-8B"
 DATASETS = ["swe-bench-lite", "loc-bench"]
@@ -42,14 +42,6 @@ def count_prompt(tokenizer, prompt):
 
 def count_response(tokenizer, response):
     return len(tokenizer.encode(response or "", add_special_tokens=False))
-
-
-def summarize_instance_values(values):
-    return {
-        "mean": mean(values),
-        "min": min(values),
-        "max": max(values),
-    }
 
 
 def load_retriever_times(dataset):
@@ -109,70 +101,58 @@ def main():
             run_dir = ROOT / f"SweRankEmbed-Large_Qwen3-Coder-30B_run{run_idx}_{dataset}"
             files = sorted(run_dir.glob("*/rerank_100_llm_gen_num_histories.json"))
             log(f"\n[run] dataset={dataset} run={run_idx} files={len(files)}")
+            if not files:
+                raise FileNotFoundError(
+                    f"No history files found under {run_dir}. "
+                    "Check that ROOT points to the results directory."
+                )
 
             instance_inputs = []
             instance_outputs = []
             instance_totals = []
-            instance_windows = []
             instance_reranker_times = []
 
-            run_start = time.time()
-            for index, path in enumerate(files, 1):
+            for path in files:
                 input_tokens = 0
                 output_tokens = 0
-                windows = 0
                 reranker_time = load_instance_time(path.parent)
 
                 with path.open(encoding="utf-8") as file:
                     data = json.load(file)
 
                 for entry in iter_entries(data.get("run_history", [])):
-                    windows += 1
                     input_tokens += count_prompt(tokenizer, entry.get("prompt"))
                     output_tokens += count_response(tokenizer, entry.get("response"))
 
                 instance_inputs.append(input_tokens)
                 instance_outputs.append(output_tokens)
                 instance_totals.append(input_tokens + output_tokens)
-                instance_windows.append(windows)
                 instance_reranker_times.append(reranker_time)
 
-                if index == 1 or index % 10 == 0 or index == len(files):
-                    elapsed = time.time() - run_start
-                    avg_per_file = elapsed / index
-                    remaining = avg_per_file * (len(files) - index)
-                    log(
-                        f"[progress] {dataset} run{run_idx} {index}/{len(files)} "
-                        f"elapsed={elapsed:.1f}s eta={remaining:.1f}s "
-                        f"last={path.parent.name} last_total={input_tokens + output_tokens} "
-                        f"last_windows={windows}"
-                    )
-
             num_instances = len(instance_totals)
+            input_total = sum(instance_inputs)
+            output_total = sum(instance_outputs)
+            token_total = sum(instance_totals)
             reranker_total_time = sum(instance_reranker_times)
             reranker_avg_time = reranker_total_time / max(num_instances, 1)
-            pipeline_total_time = retriever_total_time + reranker_total_time
-            pipeline_avg_time = retriever_avg_time + reranker_avg_time
 
             row = {
                 "dataset": dataset,
                 "run": run_idx,
                 "num_instances": num_instances,
-                "windows_total": sum(instance_windows),
-                "input_total": sum(instance_inputs),
-                "output_total": sum(instance_outputs),
-                "total_tokens": sum(instance_totals),
-                "per_instance_input": summarize_instance_values(instance_inputs),
-                "per_instance_output": summarize_instance_values(instance_outputs),
-                "per_instance_total": summarize_instance_values(instance_totals),
-                "windows_per_instance": summarize_instance_values(instance_windows),
+                "token": {
+                    "input_total": input_total,
+                    "output_total": output_total,
+                    "total": token_total,
+                    "input_avg_per_instance": input_total / num_instances,
+                    "output_avg_per_instance": output_total / num_instances,
+                    "total_avg_per_instance": token_total / num_instances,
+                },
                 "time": {
                     "retriever_avg_secs_per_instance": retriever_avg_time,
                     "retriever_total_secs": retriever_total_time,
                     "reranker_avg_secs_per_instance": reranker_avg_time,
                     "reranker_total_secs": reranker_total_time,
-                    "pipeline_avg_secs_per_instance": pipeline_avg_time,
-                    "pipeline_total_secs": pipeline_total_time,
                 },
             }
             run_rows.append(row)
@@ -183,21 +163,20 @@ def main():
         rows = [row for row in run_rows if row["dataset"] == dataset]
         summary = {"dataset": dataset}
         for field in [
-            "per_instance_input",
-            "per_instance_output",
-            "per_instance_total",
+            "input_avg_per_instance",
+            "output_avg_per_instance",
+            "total_avg_per_instance",
         ]:
-            run_means = [row[field]["mean"] for row in rows]
-            summary[f"{field}_mean_across_runs"] = mean(run_means)
-            summary[f"{field}_std_across_runs"] = pstdev(run_means)
+            run_values = [row["token"][field] for row in rows]
+            summary[f"token_{field}_mean"] = mean(run_values)
+            summary[f"token_{field}_std"] = pstdev(run_values)
         for field in [
             "retriever_avg_secs_per_instance",
             "reranker_avg_secs_per_instance",
-            "pipeline_avg_secs_per_instance",
         ]:
-            run_means = [row["time"][field] for row in rows]
-            summary[f"time_{field}_mean_across_runs"] = mean(run_means)
-            summary[f"time_{field}_std_across_runs"] = pstdev(run_means)
+            run_values = [row["time"][field] for row in rows]
+            summary[f"time_{field}_mean"] = mean(run_values)
+            summary[f"time_{field}_std"] = pstdev(run_values)
         summary_rows.append(summary)
         log("[result-summary] " + json.dumps(summary, ensure_ascii=False))
 
@@ -206,10 +185,12 @@ def main():
         "note": (
             "Offline token estimate from saved histories. Input tokens use "
             "Qwen chat template per no-context window; output tokens encode "
-            "the saved response text."
+            "the saved response text. Retriever time is read from retriever "
+            "output files; reranker time is read from per-instance time_metrics.json. "
+            "Std is computed only across run-level per-instance averages."
         ),
         "runs": run_rows,
-        "two_run_summary_of_run_means": summary_rows,
+        "summary": summary_rows,
     }
     OUT_JSON.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     log(f"[wrote] {OUT_JSON}")
@@ -217,9 +198,4 @@ def main():
 
 
 if __name__ == "__main__":
-    try:
-        main()
-    except Exception:
-        log("[error]")
-        traceback.print_exc()
-        raise
+    main()
