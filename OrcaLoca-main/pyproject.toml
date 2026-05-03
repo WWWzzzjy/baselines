@@ -26,6 +26,7 @@ dependencies = [
   "llama-index-llms-openai",
   "llama-index-llms-vertex",
   "matplotlib",
+  "openai",
   "pre-commit",
   "protobuf",
   "pydantic<2.10.0,>=2.7.0",

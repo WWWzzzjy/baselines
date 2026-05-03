@@ -6,7 +6,6 @@ from Orcar.gen_config import (
     get_model_name_for_routing,
     get_qwen_tokenizer_name,
     is_qwen_model,
-    uses_openai_compatible_request,
 )
 
 
@@ -17,22 +16,14 @@ class GenConfigModelRoutingTest(unittest.TestCase):
             "qwen3-8b",
         )
         self.assertEqual(
-            get_model_name_for_routing("anthropic/claude-3-5-sonnet-20241022"),
-            "claude-3-5-sonnet-20241022",
+            get_model_name_for_routing("openai/claude-haiku-4-5-20251001"),
+            "claude-haiku-4-5-20251001",
         )
 
     def test_qwen_detection_handles_namespaces_and_qwq(self):
         self.assertTrue(is_qwen_model("dashscope/qwen3-8b"))
         self.assertTrue(is_qwen_model("Qwen/QwQ-32B"))
         self.assertFalse(is_qwen_model("openai/gpt-4o"))
-
-    def test_openai_claude_haiku_uses_openai_compatible_request(self):
-        self.assertTrue(
-            uses_openai_compatible_request("openai/claude-haiku-4-5-20251001")
-        )
-        self.assertFalse(
-            uses_openai_compatible_request("claude-haiku-4-5-20251001")
-        )
 
     def test_qwen_tokenizer_uses_leaf_model_name(self):
         with patch.dict(os.environ, {}, clear=True):

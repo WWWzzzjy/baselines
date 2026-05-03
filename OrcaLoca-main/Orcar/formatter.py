@@ -187,7 +187,9 @@ class TokenCounter:
 
     def __init__(self, llm: LLM) -> None:
         model = llm.metadata.model_name
-        if isinstance(llm, OpenAI):
+        if isinstance(llm, OpenAI) or getattr(
+            llm, "uses_openai_chat_completions", False
+        ):
             tokenizer = getattr(llm, "_tokenizer", None)
             if tokenizer is not None:
                 self.encoding = tokenizer

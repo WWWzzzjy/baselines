@@ -1,12 +1,22 @@
 import os
+import asyncio
+from typing import Sequence
 
 import config
-from llama_index.core.base.llms.types import LLMMetadata, MessageRole
+from llama_index.core.base.llms.types import (
+    ChatMessage,
+    ChatResponse,
+    CompletionResponse,
+    LLMMetadata,
+    MessageRole,
+)
+from llama_index.core.callbacks import CallbackManager
 from google.oauth2 import service_account
 from llama_index.core.llms.llm import LLM
 from llama_index.llms.anthropic import Anthropic
 from llama_index.llms.openai import OpenAI
 from llama_index.llms.vertex import Vertex
+from openai import OpenAI as OpenAIClient
 from transformers import AutoTokenizer
 
 from .utils import VertexAnthropicWithCredentials
@@ -19,13 +29,6 @@ def get_model_name_for_routing(model: str) -> str:
 def is_qwen_model(model: str) -> bool:
     model_name = get_model_name_for_routing(model)
     return model_name.startswith(("qwen", "qwq"))
-
-
-def uses_openai_compatible_request(model: str) -> bool:
-    return (
-        is_qwen_model(model)
-        or model.strip().lower() == "openai/claude-haiku-4-5-20251001"
-    )
 
 
 def require_config_value(orcar_config: "Config | None", key: str) -> str:
@@ -68,6 +71,78 @@ class OpenAICompatible(OpenAI):
         )
 
 
+class DirectOpenAIChatCompletions:
+    uses_openai_chat_completions = True
+    supports_response_format = True
+
+    def __init__(
+        self,
+        model: str,
+        api_key: str,
+        api_base: str | None = None,
+        max_tokens: int | None = None,
+        additional_kwargs: dict | None = None,
+        callback_manager: CallbackManager | None = None,
+        **_: object,
+    ):
+        self.model = model
+        self.max_tokens = max_tokens
+        self.additional_kwargs = dict(additional_kwargs or {})
+        self.callback_manager = callback_manager or CallbackManager([])
+        self._client = OpenAIClient(api_key=api_key, base_url=api_base)
+
+    @property
+    def metadata(self) -> LLMMetadata:
+        return LLMMetadata(
+            context_window=131072,
+            num_output=self.max_tokens or -1,
+            is_chat_model=True,
+            is_function_calling_model=False,
+            model_name=self.model,
+            system_role=MessageRole.SYSTEM,
+        )
+
+    def _message_to_dict(self, message: ChatMessage) -> dict[str, str]:
+        role = message.role.value if hasattr(message.role, "value") else str(message.role)
+        return {"role": role, "content": message.content or ""}
+
+    def messages_to_prompt(self, messages: Sequence[ChatMessage]) -> str:
+        return "\n".join(
+            f"{self._message_to_dict(message)['role']}: "
+            f"{self._message_to_dict(message)['content']}"
+            for message in messages
+        )
+
+    def chat(self, messages: Sequence[ChatMessage], **kwargs: object) -> ChatResponse:
+        request_kwargs = dict(self.additional_kwargs)
+        request_kwargs.update(kwargs)
+        if self.max_tokens is not None:
+            request_kwargs.setdefault("max_tokens", self.max_tokens)
+
+        response = self._client.chat.completions.create(
+            model=self.model,
+            messages=[self._message_to_dict(message) for message in messages],
+            **request_kwargs,
+        )
+        content = response.choices[0].message.content or ""
+        return ChatResponse(
+            message=ChatMessage(role=MessageRole.ASSISTANT, content=content),
+            raw=response,
+        )
+
+    async def achat(
+        self, messages: Sequence[ChatMessage], **kwargs: object
+    ) -> ChatResponse:
+        return await asyncio.to_thread(self.chat, messages, **kwargs)
+
+    def complete(self, prompt: str, **kwargs: object) -> CompletionResponse:
+        response = self.chat(
+            [ChatMessage(role=MessageRole.USER, content=prompt)],
+            **kwargs,
+        )
+        return CompletionResponse(text=response.message.content or "", raw=response.raw)
+
+
 class Config:
     def __init__(self, file_path=None, provider=None):
         self.file_path = file_path
@@ -102,8 +177,17 @@ def get_llm(**kwargs) -> LLM:
     model = str(model).strip()
     kwargs["model"] = model
     model_name = get_model_name_for_routing(model)
-    use_openai_compatible = uses_openai_compatible_request(model)
-    if model_name.startswith("claude") and not use_openai_compatible:
+    if model.lower().startswith("openai/"):
+        kwargs["model"] = model.split("/", 1)[1]
+        api_base = kwargs.get("api_base")
+        if not api_base and orcar_config is not None:
+            api_base = orcar_config["OPENAI_API_BASE_URL"]
+        if api_base:
+            kwargs["api_base"] = api_base
+        if "api_key" not in kwargs:
+            kwargs["api_key"] = require_config_value(orcar_config, "OPENAI_API_KEY")
+        LLM_func = DirectOpenAIChatCompletions
+    elif model_name.startswith("claude"):
         # first check if the provider has been set
         if getattr(orcar_config, "provider", None) == "vertexanthropic":
             print(f"Using AnthropicVertex model: {model}")
@@ -163,7 +247,7 @@ def get_llm(**kwargs) -> LLM:
             kwargs["additional_kwargs"] = additional_kwargs
         if model_name.startswith("gpt"):
             LLM_func = OpenAI
-        elif use_openai_compatible or api_base:
+        elif is_qwen_model(model) or api_base:
             LLM_func = OpenAICompatible
         else:
             raise ValueError(

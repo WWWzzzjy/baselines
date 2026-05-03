@@ -1303,7 +1303,9 @@ class SearchWorker(BaseAgentWorker):
             self._llm.messages_to_prompt(input_chat)
         )
         call_start = time.perf_counter()
-        if isinstance(self._llm, OpenAI):
+        if isinstance(self._llm, OpenAI) or getattr(
+            self._llm, "supports_response_format", False
+        ):
             chat_response = self._llm.chat(
                 input_chat, response_format={"type": "json_object"}
             )

@@ -324,7 +324,9 @@ class EditWorker(BaseAgentWorker):
         in_token_cnt = self._token_counter.count(
             self._llm.messages_to_prompt(input_chat)
         )
-        if isinstance(self._llm, OpenAI):
+        if isinstance(self._llm, OpenAI) or getattr(
+            self._llm, "supports_response_format", False
+        ):
             chat_response = self._llm.chat(
                 input_chat, response_format={"type": "json_object"}
             )
