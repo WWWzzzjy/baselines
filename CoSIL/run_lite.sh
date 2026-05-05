@@ -14,7 +14,7 @@ model_names=("qwen3.5-flash-2026-02-23")
 data_tap="swe-bench-lite" # "swe-bench-lite" / "loc-bench-v1"
 backend=("openai")
 threads=1
-n_instance=3
+n_instance="${N_INSTANCE:-50}"
 run_nums=3
 temperature=0.6
 top_p=0.95
@@ -52,5 +52,4 @@ for run_id in $(seq 1 ${run_nums}); do
       --n_instances ${n_instance}
   done
 done
-
 

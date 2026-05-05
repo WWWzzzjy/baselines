@@ -263,7 +263,8 @@ def evaluate_accuracy(loc_outputs, gt_data, verbose=True):
         "inference_time": {
             "total": total_inference_time,
             "average": avg_inference_time,
-        }
+        },
+        "total_instances": total_instances
     }
 
 
