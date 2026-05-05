@@ -15,7 +15,9 @@ def load_json(file_path):
 
 
 def top_k_accuracy(gt, preds, k):
-    return any(item in gt for item in preds[:k])
+    if not gt:
+        return False
+    return set(gt).issubset(set(preds[:k]))
 
 
 def extract_token_count(obj):
@@ -43,7 +45,7 @@ def extract_inference_time(obj):
 
 
 def acc_at_k(gt, preds, k):
-    return sum(1 for item in preds[:k] if item in gt) / k
+    return 1.0 if top_k_accuracy(gt, preds, k) else 0.0
 
 
 def f1_at_k(gt, preds, k):
