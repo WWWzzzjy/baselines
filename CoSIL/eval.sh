@@ -61,6 +61,7 @@ for run_id in range(1, run_nums + 1):
         f"func_F1@5={row['func_F1@5']:.2f}% "
         f"avg_tokens={row['avg_tokens']:.2f} "
         f"avg_time={row['avg_time']:.2f}s"
+        f"total_instances={result['total_instances']}"
     )
 
 print("\\nmean / std:")
